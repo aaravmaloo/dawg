@@ -3,3 +3,4 @@
 __pycache__/
 data/guild_1374308995111583845.json
 /data
+src/secret.env
