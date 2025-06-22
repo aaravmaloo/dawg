@@ -5,304 +5,1539 @@ import random
 import asyncio
 import os
 import json
-from datetime import datetime, timezone # For UTC timestamps
+from datetime import datetime, timezone, timedelta
+import dotenv
+import logging
 
-# ----------------------------------------------------------------------------------
-BOT_TOKEN = "MTM4MDc4NjE2NTAzMjAyNjIwMg.GQfUgr.5Izsz8zwEtuVqNHdMVnkd9OLByQQ9h-dBQGgAE" # REPLACE THIS
-# ----------------------------------------------------------------------------------
+# --- Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s %(name)s: %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger('dogbot')
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
+loaded = dotenv.load_dotenv(r'C:\Users\Aarav Maloo\Desktop\dog bot\src\secret.env')
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+intents = discord.Intents.default(); intents.message_content = True; intents.guilds = True
 bot = commands.Bot(command_prefix="!unused!", intents=intents)
 
-# --- Default Global Configuration (used if per-guild settings are missing/new guild) ---
-DEFAULT_MIN_SPAWN_SECONDS = 120
-DEFAULT_MAX_SPAWN_SECONDS = 300
-DEFAULT_POST_CATCH_SPAWN_SECONDS = 30
-
-CAUGHT_DOG_EMOJI_FALLBACK = "🦴"
-DOG_IMAGE_PATH_TEMPLATE = os.path.join("src", "imgs", "{image_name}")
+DEFAULT_MIN_SPAWN_SECONDS = 120; DEFAULT_MAX_SPAWN_SECONDS = 300; DEFAULT_POST_CATCH_SPAWN_SECONDS = 30
+SHIELD_DURATION_HOURS = 12; SHIELD_COST_NORMAL_DOGS = 5; THEFT_FAIL_PENALTY_NORMAL_DOGS = 5
+MAX_THEFT_FAIL_STREAK_FOR_WANTED = 5; SPAWN_CATCH_BAN_HOURS_ON_WANTED_FAIL = 24
+THEFT_SUCCESS_CHANCE = 0.25; SHIELD_BYPASS_CHANCE_WITH_REACTOR = 0.20
+CAUGHT_DOG_EMOJI_FALLBACK = "🦴"; DOG_IMAGE_PATH_TEMPLATE = os.path.join("src", "imgs", "spawn_types", "{image_name}")
 DATA_DIR = os.path.join("data")
+QUESTS_FOR_CHEST = 3 
+DOGSINO_ENTRY_COST_UNCOMMON_DOG_TYPE = "uncommon_dog" 
+DOGSINO_ENTRY_COST_AMOUNT = 3
+DOGSINO_RAREST_WIN_CHANCE = 0.01 
+QUEST_RESET_HOURS = 10 
+MAX_ACTIVE_QUESTS = 3
 
 DOG_TYPES = {
-    "normal_dog": {
-        "display_name": "Normal Dog",
-        "emoji_name": "normal_dog_img",
-        "emoji_id": "1384534131970412594",
-        "image_name": "dog.png"
-    }
+    "normal_dog":    {"display_name": "Normal Dog",    "image_name": "dog.png",            "value": 10,  "spawn_weight": 2500.0, "emoji_name": "normal_dog", "emoji_id": "1384534131970412594"},
+    "dog_good":      {"display_name": "Good Dog",      "image_name": "dog_good.png",       "value": 20,  "spawn_weight": 1500.0,  "emoji_name": "dog_good",   "emoji_id": "138585088318332567"},
+    "dog_better":    {"display_name": "Better Dog",    "image_name": "dog_better.png",     "value": 30,  "spawn_weight": 1000.0,  "emoji_name": "dog_better", "emoji_id": "138585100167671156"},
+    "uncommon_dog":  {"display_name": "Uncommon Dog",  "image_name": "uncommon_dog.png",   "value": 50,  "spawn_weight": 700.0,  "emoji_name": "uncommon_dog", "emoji_id": "138585243314525103"},
+    "fine_dog":      {"display_name": "Fine Dog",      "image_name": "dog_fine.png",       "value": 70,  "spawn_weight": 500.0,  "emoji_name": "dog_fine",   "emoji_id": "1384912439040016524"},
+    "loyal_dog":     {"display_name": "Loyal Dog",     "image_name": "loyal_dog.png",      "value": 100, "spawn_weight": 350.0,  "emoji_name": "loyal_dog",  "emoji_id": "138585182510429447"},
+    "divine_dog":    {"display_name": "Divine Dog",    "image_name": "divine_dog.png",     "value": 150, "spawn_weight": 250.0,  "emoji_name": "divine_dog", "emoji_id": "138585112117838585"},
+    "dangerous_dog": {"display_name": "Dangerous Dog", "image_name": "dangerous_dog.png",  "value": 200, "spawn_weight": 180.0,  "emoji_name": "dangerous_dog","emoji_id": "138585072151267047"},
+    "angel_dog":     {"display_name": "Angel Dog",     "image_name": "angel_dog.png",      "value": 250, "spawn_weight": 120.0,   "emoji_name": "angel_dog",  "emoji_id": "138585059215907526"},
+    "golden_dog":    {"display_name": "Golden Dog",    "image_name": "gold_dog.png",       "value": 300, "spawn_weight": 90.0,   "emoji_name": "gold_dog", "emoji_id": "138585167080670763"},
+    "spirit_dog":    {"display_name": "Spirit Dog",    "image_name": "spirit_dog.png",     "value": 350, "spawn_weight": 70.0,   "emoji_name": "spirit_dog", "emoji_id": "138585218272697146"},
+    "ancient_dog":   {"display_name": "Ancient Dog",   "image_name": "ancient_dog.png",    "value": 400, "spawn_weight": 60.0,   "emoji_name": "ancient_dog","emoji_id": "138585037708365560"},
+    "super_dog":     {"display_name": "Super Dog",     "image_name": "super_dog.png",      "value": 500, "spawn_weight": 50.0,   "emoji_name": "super_dog",  "emoji_id": "138585273727801360"},
+    "sonic_dog":     {"display_name": "Sonic Dog",     "image_name": "sonic_dog.png",      "value": 600, "spawn_weight": 40.0,   "emoji_name": "sonic_dog",  "emoji_id": "138585204811826623"},
+    "amazing_dog":   {"display_name": "Amazing Dog",   "image_name": "amazing_dog.png",    "value": 750, "spawn_weight": 30.0,   "emoji_name": "amazing_dog","emoji_id": "138585017074254328"},
+    "master_dog":    {"display_name": "Master Dog",    "image_name": "master_dog.png",     "value": 1000,"spawn_weight": 20.0,   "emoji_name": "master_dog", "emoji_id": "138585193723121452"},
+    "trash_dog":     {"display_name": "Trash Dog",     "image_name": "trash_dog.png",      "value": 5,   "spawn_weight": 15.0,  "emoji_name": "trash_dog",  "emoji_id": "138585263162679541"},
+    "unidentified_dog":{"display_name": "Unidentified Dog", "image_name": "unidentified_dog.jpg", "value": 1250,"spawn_weight": 8.0,    "emoji_name": "unidentified_dog","emoji_id": "138585231254283166"},
+    "unbeatable_dog":{"display_name": "Unbeatable Dog","image_name": "unbeatable_dog.png", "value": 1500,"spawn_weight": 4.0,    "emoji_name": "unbeatable_dog","emoji_id": "138585254479513643"},
+    "alien_dog":     {"display_name": "Alien Dog",     "image_name": "alien_dog.png",      "value": 2000,"spawn_weight": 1.5,    "emoji_name": "alien_dog",  "emoji_id": "138585005776421210"},
+    "void_dog":      {"display_name": "Void Dog",      "image_name": "void_dog.png",       "value": 5000,"spawn_weight": 0.3,    "emoji_name": "void_dog",   "emoji_id": "138585292776110074"},
+    "devil_dog":     {"display_name": "Devil Dog",     "image_name": "devil_dog.png",      "value": 6666,"spawn_weight": 0.08,   "emoji_name": "devil_dog",  "emoji_id": "138585127746034654"},
+    "godly_dog":     {"display_name": "Godly Dog",     "image_name": "godly_dog.png",      "value": 8000,"spawn_weight": 0.02,   "emoji_name": "godly_dog",  "emoji_id": "138585147440087917"}
 }
-CURRENT_SPAWN_TYPE_KEY = "normal_dog"
-active_dog_spawns = {} # Key: channel_id, Value: { "dog_type": key, "guild_id": id }
+DOG_TYPE_KEYS = list(DOG_TYPES.keys()); DOG_SPAWN_KEYS_FOR_RANDOM = [key for key, props in DOG_TYPES.items() if props.get("spawn_weight", 0) > 0]
+DOG_SPAWN_WEIGHTS_FOR_RANDOM = [DOG_TYPES[key]["spawn_weight"] for key in DOG_SPAWN_KEYS_FOR_RANDOM if key in DOG_SPAWN_KEYS_FOR_RANDOM]
+ARC_REACTOR_TYPES = {
+    "shield_piercer_charge": {"display_name": "Shield Piercer Charge", "description": "One-time 25% shield bypass. Consumed on /steal.", "duration_seconds": 0, "emoji": "💥", "effect_type": "shield_bypass_on_steal"},
+    "amulet_of_duplication": {"display_name": "Amulet of Duplication", "description": f"For 12 hours, every dog caught becomes two!", "duration_seconds": 12 * 3600, "emoji": "♊", "effect_type": "double_catch"},
+    "charm_of_thieves_luck": {"display_name": "Charm of Thieves' Luck", "description": "For 1 hour, +15% theft success chance.", "duration_seconds": 1 * 3600, "emoji": "🍀", "effect_type": "theft_boost"},
+    "magnet_of_attraction": {"display_name": "Magnet of Attraction", "description": "For 15 minutes, you feel a stronger pull from spawning dogs (conceptual).", "duration_seconds": 15 * 60, "emoji": "🧲", "effect_type": "personal_lure"},
+    "cooldown_reducer": {"display_name": "Cooldown Reducer", "description": "Instantly reduces this server's next dog spawn cooldown by up to 10 minutes.", "duration_seconds": 0, "emoji": "⏱️", "effect_type": "spawn_cooldown_reduction"}
+}
+ARC_REACTOR_TYPE_KEYS = list(ARC_REACTOR_TYPES.keys()); active_dog_spawns = {}
+ACHIEVEMENTS = {
+    "first_catch": {"name": "First Catch!", "description": "You caught your very first dog!", "emoji": "🎉"},
+    "dog_novice": {"name": "Dog Novice", "description": "Collect 10 dogs in total.", "emoji": "🐾"},
+    "dog_collector": {"name": "Dog Collector", "description": "Collect 50 dogs in total.", "emoji": "🏆"},
+    "normal_dog_expert": {"name": "Normal Dog Expert", "description": f"Collect 25 Normal Dogs.", "emoji": DOG_TYPES.get("normal_dog",{}).get("emoji_name", "🐶")}, # Using normal_dog key
+    "rare_find": {"name": "Rare Find", "description": "Catch a dog with a value of 1000 or more.", "emoji": "💎"},
+    "variety_lover": {"name": "Variety Lover", "description": "Own at least 10 different types of dogs.", "emoji": "🌈"},
+    "pack_leader": {"name": "Pack Leader", "description": "Own at least 20 dogs of 5 different types.", "emoji": "👑"},
+    "dog_millionaire": {"name": "Dog Millionaire", "description": "Reach a total dog collection value of 1,000,000.", "emoji": "💰"},
+    "dedicated_catcher": {"name": "Dedicated Catcher", "description": "Catch 100 dogs.", "emoji": "🎣"},
+    "master_crafter": {"name": "Master Crafter", "description": "Successfully craft 10 items (dogs or reactors).", "emoji": "🛠️"}
+}
+ACHIEVEMENT_KEYS = list(ACHIEVEMENTS.keys())
+QUEST_DEFINITIONS = {
+    "catch_normals_1": {"id": "catch_normals_1", "title": "Basic Training", "description": "Catch 5 Normal Dogs.", "objective_type": "catch_specific", "dog_type_key": "normal_dog", "target_count": 5, "reward_type": "dogs", "reward_item_key": "dog_good", "reward_amount": 2, "xp_reward": 50},
+    "catch_any_1": {"id": "catch_any_1", "title": "Getting Started", "description": "Catch any 3 dogs.", "objective_type": "catch_any", "target_count": 3, "reward_type": "dogs", "reward_item_key": "uncommon_dog", "reward_amount": 1, "xp_reward": 30},
+    "value_milestone_1": {"id": "value_milestone_1", "title": "Small Fortune", "description": "Reach a total dog collection value of 500.", "objective_type": "total_value", "target_value": 500, "reward_type": "dogs", "reward_item_key": "fine_dog", "reward_amount": 1, "xp_reward": 100},
+    "catch_uncommon_1": {"id": "catch_uncommon_1", "title": "Beyond the Basics", "description": "Catch 2 Uncommon Dogs.", "objective_type": "catch_specific", "dog_type_key": "uncommon_dog", "target_count": 2, "reward_type": "dogs", "reward_item_key": "loyal_dog", "reward_amount": 1, "xp_reward": 75},
+    "craft_item_1": {"id": "craft_item_1", "title": "Budding Crafter", "description": "Craft any 1 item (dog or reactor).", "objective_type": "craft_any", "target_count": 1, "reward_type": "arc_reactors", "reward_item_key": "charm_of_thieves_luck", "reward_amount": 1, "xp_reward": 60}
+}
 
-
-# --- Helper Functions for Per-Guild Data Handling ---
-def get_guild_data_file_path(guild_id):
-    return os.path.join(DATA_DIR, f"guild_{guild_id}.json")
-
-def load_guild_data(guild_id, guild_name_for_init="Unknown Server"):
-    path = get_guild_data_file_path(guild_id)
-    current_timestamp = int(datetime.now(timezone.utc).timestamp())
-    default_data = {
-        "settings": {
-            "min_spawn_seconds": DEFAULT_MIN_SPAWN_SECONDS,
-            "max_spawn_seconds": DEFAULT_MAX_SPAWN_SECONDS,
-            "post_catch_spawn_seconds": DEFAULT_POST_CATCH_SPAWN_SECONDS,
-            "server_name_for_reference": guild_name_for_init
-        },
-        "spawn_state": {
-            # Start eligible to spawn almost immediately (or after a short delay)
-            "next_eligible_spawn_timestamp": current_timestamp + random.randint(10, 30),
-            "is_in_post_catch_cooldown": False
-        },
-        "user_inventories": {}
-    }
-    if os.path.exists(path):
-        try:
-            with open(path, 'r') as f: content = f.read()
-            if not content.strip(): return default_data
-            data = json.loads(content)
-            # Ensure all keys exist, merge defaults for missing parts
-            if "settings" not in data: data["settings"] = default_data["settings"].copy()
-            else:
-                data["settings"].setdefault("min_spawn_seconds", DEFAULT_MIN_SPAWN_SECONDS)
-                data["settings"].setdefault("max_spawn_seconds", DEFAULT_MAX_SPAWN_SECONDS)
-                data["settings"].setdefault("post_catch_spawn_seconds", DEFAULT_POST_CATCH_SPAWN_SECONDS)
-                data["settings"].setdefault("server_name_for_reference", guild_name_for_init)
-            if "spawn_state" not in data: data["spawn_state"] = default_data["spawn_state"].copy()
-            else:
-                data["spawn_state"].setdefault("next_eligible_spawn_timestamp", current_timestamp + random.randint(min(data["settings"]["min_spawn_seconds"],60), data["settings"]["min_spawn_seconds"] )) # Sensible default if missing
-                data["spawn_state"].setdefault("is_in_post_catch_cooldown", False)
-            if "user_inventories" not in data: data["user_inventories"] = {}
-            return data
-        except Exception as e:
-            print(f"[{datetime.now()}] Error loading data for guild {guild_id} from {path}: {e}")
-            return default_data
-    return default_data
-
-def save_guild_data(guild_id, data, guild_name_for_ref=""):
-    if not os.path.exists(DATA_DIR):
-        try: os.makedirs(DATA_DIR)
-        except Exception as e: print(f"[{datetime.now()}] Error creating data dir: {e}"); return False
-    
-    if guild_name_for_ref: # Update server name if provided
-        data.setdefault("settings", {}).update({"server_name_for_reference": guild_name_for_ref})
-
-    path = get_guild_data_file_path(guild_id)
+def format_time_delta(seconds: int) -> str:
+    if seconds < 0: seconds = 0;
+    if seconds == 1: return "1 second";
+    if seconds < 60: return f"{seconds} seconds";
+    m, s = divmod(seconds, 60)
+    if m == 1 and s == 0: return "1 minute"
+    if m < 60: return f"{m} minute{'s' if m!=1 else ''}{f' and {s} second{"" if s==1 else "s"}' if s>0 else ''}"
+    h, m = divmod(m, 60)
+    h_str=f"{h} hour{'s' if h!=1 else ''}"; m_str=f"{m} minute{'s' if m!=1 else ''}" if m>0 else ""; s_str=f"{s} second{'s' if s!=1 else ''}" if s>0 else ""
+    parts = [p for p in [h_str,m_str,s_str] if p];
+    if len(parts) > 1 and "and" not in parts[-2] and len(parts[-1]) > 0 :
+        if len(parts) > 2 and len(parts[-2]) > 0: parts[-2] = f"{parts[-2]} and {parts[-1]}"
+        elif len(parts) == 2 : parts[0] = f"{parts[0]} and {parts[-1]}"
+        parts.pop();
+    return ", ".join(parts) if parts else "0 seconds"
+def get_guild_data_file_path(gid): return os.path.join(DATA_DIR, f"guild_{gid}.json")
+def _get_default_user_data_structure():
+    return {"inventory": {key: 0 for key in DOG_TYPE_KEYS}, "arc_reactors": {key: 0 for key in ARC_REACTOR_TYPE_KEYS}, "active_effects": {}, "shield_active_until": 0, "theft_fail_streak": 0, "wanted_level": False, "spawn_catch_banned_until": 0, "unlocked_achievements": [], "active_quests": {}, "completed_quests_this_cycle": [], "last_quest_reset_timestamp":0, "quests_completed_for_chest": 0, "chest_available": False }
+def load_guild_data(gid: str, gname: str = "?") -> dict:
+    path = get_guild_data_file_path(gid); ts = int(datetime.now(timezone.utc).timestamp())
+    min_dfns = DEFAULT_MIN_SPAWN_SECONDS; id_new = random.randint(min(10, min_dfns//2 if min_dfns>20 else 10), min_dfns)
+    guild_file_df = {"settings":{"min_spawn_seconds":min_dfns,"max_spawn_seconds":DEFAULT_MAX_SPAWN_SECONDS,"post_catch_spawn_seconds":DEFAULT_POST_CATCH_SPAWN_SECONDS,"server_name_for_reference":gname,"crafting_enabled":True,"theft_enabled":True,"quests_enabled":True, "spawn_channel_ids": []},"spawn_state":{"next_eligible_spawn_timestamp":ts+id_new,"is_in_post_catch_cooldown":False},"crafting_recipes":{"dogs":{},"arc_reactors":{}}, "user_data":{}}
+    if not os.path.exists(path): return guild_file_df
     try:
-        with open(path, 'w') as f: json.dump(data, f, indent=4)
-        # print(f"[{datetime.now()}] Saved data for guild {guild_id} ('{data.get('settings',{}).get('server_name_for_reference','Unknown')}').")
-        return True
-    except Exception as e: print(f"[{datetime.now()}] Error saving data for guild {guild_id}: {e}"); return False
+        with open(path,'r')as f:c=f.read()
+        if not c.strip(): return guild_file_df
+        data=json.loads(c)
+        for tk,tv in guild_file_df.items():
+            dt=data.setdefault(tk,tv.copy()if isinstance(tv,(dict,list))else tv)
+            if isinstance(tv,dict)and tk!="user_data":
+                for sk,sv in tv.items():
+                    if isinstance(dt,dict):dt.setdefault(sk,sv.copy()if isinstance(sv,(dict,list))else sv)
+        all_users_data = data.setdefault("user_data", {})
+        if isinstance(all_users_data, dict):
+            for uid_str, u_block_loaded in list(all_users_data.items()):
+                def_usr_struct = _get_default_user_data_structure()
+                if not isinstance(u_block_loaded, dict): all_users_data[uid_str] = def_usr_struct.copy(); continue
+                for prop_k, def_prop_v in def_usr_struct.items(): u_block_loaded.setdefault(prop_k, def_prop_v.copy() if isinstance(def_prop_v, (dict, list)) else def_prop_v)
+                inv = u_block_loaded.setdefault("inventory", {}); reac = u_block_loaded.setdefault("arc_reactors", {})
+                for dog_k_e in DOG_TYPE_KEYS: inv.setdefault(dog_k_e, 0)
+                for reac_k_e in ARC_REACTOR_TYPE_KEYS: reac.setdefault(reac_k_e, 0)
+                u_block_loaded.setdefault("completed_quests_this_cycle", []) # Ensure this exists
+        else: data["user_data"] = {}
+        s_state=data.setdefault("spawn_state",guild_file_df["spawn_state"].copy())
+        if s_state.get("next_eligible_spawn_timestamp",0)==0 or s_state.get("next_eligible_spawn_timestamp",ts)<ts-(7*24*3600):
+            min_s_res=data.get("settings",{}).get("min_spawn_seconds",DEFAULT_MIN_SPAWN_SECONDS); res_delay=random.randint(min(10,min_s_res//2 if min_s_res>20 else 10),min_s_res)
+            s_state["next_eligible_spawn_timestamp"]=ts+res_delay
+        data.setdefault("settings", {}).setdefault("spawn_channel_ids", [])
+        return data
+    except Exception as e:
+        logger.error(f"Err load guild {gid}: {e}")
+        print(f"Err load guild {gid}:{e}");import traceback;traceback.print_exc();
+        return guild_file_df
+def save_guild_data(gid,d,gname=""):
+    if not os.path.exists(DATA_DIR):
+        try:os.makedirs(DATA_DIR)
+        except Exception as e:logger.error(f"Err creating data dir for save: {e}");print(f"Err creating data dir for save: {e}");return False
+    if gname:d.setdefault("settings",{}).update({"server_name_for_reference":gname})
+    d.setdefault("settings",{}); d["settings"].setdefault("spawn_channel_ids", [])
+    d.setdefault("spawn_state",{});d.setdefault("crafting_recipes",{"dogs":{}, "arc_reactors":{}});d.setdefault("user_data",{})
+    try:
+        with open(get_guild_data_file_path(gid),'w')as f:json.dump(d,f,indent=4);return True
+    except Exception as e:logger.error(f"Err save guild {gid} data:{e}");print(f"Err save guild {gid} data:{e}");return False
+def get_user_data_block(gid: str, uid: str, guild_data_ref: dict) -> dict:
+    uid_s = str(uid); all_users_data = guild_data_ref.setdefault("user_data", {})
+    if uid_s not in all_users_data or not isinstance(all_users_data[uid_s], dict): all_users_data[uid_s] = _get_default_user_data_structure()
+    else:
+        user_block = all_users_data[uid_s]; default_user_struct_template = _get_default_user_data_structure()
+        for key, default_value in default_user_struct_template.items(): user_block.setdefault(key, default_value.copy() if isinstance(default_value, (dict, list)) else default_value)
+        inv = user_block.setdefault("inventory", {}); reac = user_block.setdefault("arc_reactors", {})
+        for dog_key in DOG_TYPE_KEYS: inv.setdefault(dog_key, 0)
+        for reactor_key in ARC_REACTOR_TYPE_KEYS: reac.setdefault(reactor_key, 0)
+        user_block.setdefault("completed_quests_this_cycle",[])
+    return all_users_data[uid_s]
 
-def get_user_inventory(guild_id, user_id): # Same as before
+async def update_quest_progress(source_event, user_id: str, guild_id: str, event_type: str, event_data: dict):
     guild_data = load_guild_data(guild_id)
-    user_inventories = guild_data.get("user_inventories", {})
-    user_id_str = str(user_id)
-    if user_id_str not in user_inventories: user_inventories[user_id_str] = {}
-    for key in DOG_TYPES:
-        if key not in user_inventories[user_id_str]: user_inventories[user_id_str][key] = 0
-    return user_inventories.get(user_id_str, {})
+    user_data = get_user_data_block(guild_id, user_id, guild_data)
+    active_quests = user_data.setdefault("active_quests", {})
+    completed_this_cycle = user_data.setdefault("completed_quests_this_cycle", [])
+    quests_to_remove_from_active = []
+    newly_completed_for_chat_notification = []
 
-# --- TASKS.LOOP FUNCTION (Global Poller for Per-Guild Spawns) ---
-@tasks.loop(seconds=15) # How often to check all guilds (e.g., every 15-30 seconds)
-async def per_guild_spawn_checker_task():
-    print(f"[{datetime.now()}] PER_GUILD_SPAWN_CHECKER: Running global check for {len(bot.guilds)} guilds.")
-    current_timestamp = int(datetime.now(timezone.utc).timestamp())
+    for quest_id, quest_prog_data in active_quests.items():
+        quest_def = QUEST_DEFINITIONS.get(quest_id)
+        if not quest_def: continue
+        objective_met = False
+        current_progress = quest_prog_data.get("progress", 0)
+        target = quest_prog_data.get("target", 1)
 
-    for guild in bot.guilds:
-        guild_data = load_guild_data(guild.id, guild.name) # Load current data
-        settings = guild_data["settings"]
-        spawn_state = guild_data["spawn_state"]
-
-        # print(f"[{datetime.now()}] Checking Guild: {guild.name}, Next Spawn At: {datetime.fromtimestamp(spawn_state['next_eligible_spawn_timestamp'], timezone.utc)}, Now: {datetime.fromtimestamp(current_timestamp, timezone.utc)}")
-
-        if current_timestamp >= spawn_state["next_eligible_spawn_timestamp"]:
-            print(f"[{datetime.now()}] Guild '{guild.name}' is eligible for spawn (time met).")
-            eligible_channels_in_guild = []
-            for channel in guild.text_channels:
-                permissions = channel.permissions_for(guild.me)
-                if permissions.send_messages and permissions.attach_files and \
-                   not active_dog_spawns.get(channel.id): # Check if dog already spawned by this bot in this channel
-                    eligible_channels_in_guild.append(channel)
+        if event_type == quest_def["objective_type"]:
+            if event_type == "catch_specific":
+                if event_data.get("dog_type_key") == quest_def.get("dog_type_key"):
+                    current_progress += 1
+            elif event_type == "catch_any":
+                current_progress += 1
+            elif event_type == "craft_any": # Assumes event_data={"item_key": "crafted_item_key", "category": "dogs/reactors"}
+                current_progress +=1 
+            # Add other event_types here like "steal_dog", "use_reactor" etc.
+        
+        if quest_def["objective_type"] == "total_value": # This needs recalculation based on current inventory
+            current_total_value = 0; user_inv = user_data.get("inventory", {})
+            for dk, dc in user_inv.items():
+                if dk in DOG_TYPES: current_total_value += DOG_TYPES[dk].get("value",0) * dc
+            current_progress = current_total_value
             
-            if eligible_channels_in_guild:
-                chosen_channel = random.choice(eligible_channels_in_guild)
-                print(f"[{datetime.now()}] Attempting to spawn in '{guild.name}' -> #{chosen_channel.name}")
+        quest_prog_data["progress"] = current_progress
+        if current_progress >= target: objective_met = True
+
+        if objective_met:
+            if quest_id not in completed_this_cycle: 
+                completed_this_cycle.append(quest_id)
+                newly_completed_for_chat_notification.append(quest_def["title"])
+            quests_to_remove_from_active.append(quest_id)
+            # Give quest reward (simplified, assuming direct inventory add)
+            reward_type = quest_def.get("reward_type"); reward_item = quest_def.get("reward_item_key"); reward_amount = quest_def.get("reward_amount", 1)
+            if reward_type == "dogs" and reward_item in DOG_TYPES: user_data["inventory"][reward_item] = user_data["inventory"].get(reward_item, 0) + reward_amount
+            elif reward_type == "arc_reactors" and reward_item in ARC_REACTOR_TYPES: user_data["arc_reactors"][reward_item] = user_data["arc_reactors"].get(reward_item, 0) + reward_amount
+            # Add XP later if you have an XP system
+
+    for qid_done in quests_to_remove_from_active:
+        if qid_done in active_quests: del active_quests[qid_done]
+        user_data.setdefault("completed_quests", []).append(qid_done)
+    
+    if newly_completed_for_chat_notification: # Send chat notification for completed quests
+        user_object = None
+        if isinstance(source_event, discord.Interaction): user_object = source_event.guild.get_member(int(user_id))
+        elif isinstance(source_event, discord.Message): user_object = source_event.guild.get_member(int(user_id))
+        if user_object:
+            completed_titles = ", ".join([f"**{title}**" for title in newly_completed_for_chat_notification])
+            channel_to_send = source_event.channel if isinstance(source_event, discord.Message) else source_event.channel
+            if channel_to_send:
+                try: await channel_to_send.send(f"🎉 {user_object.mention} completed quest(s): {completed_titles}!")
+                except: pass # Ignore if cannot send
+    
+    save_guild_data(guild_id, guild_data) # Save changes after processing all quests
+    await check_achievements_and_chest(source_event, user_id, guild_id, "quest_progress_update", {}) # Re-check for chest/achievements
+
+
+async def check_achievements_and_chest(interaction_or_message, user_id: str, guild_id: str, event_type: str, event_data: dict = None):
+    guild_data = load_guild_data(guild_id); user_data = get_user_data_block(guild_id, user_id, guild_data)
+    unlocked_achievements = user_data.setdefault("unlocked_achievements", []); user_inventory = user_data.get("inventory", {})
+    newly_unlocked_notifications = [] # Store tuples of (type, name, description, emoji)
+
+    if event_type == "catch" and "first_catch" not in unlocked_achievements: unlocked_achievements.append("first_catch"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["first_catch"]))
+    total_dogs_owned = sum(user_inventory.values())
+    if "dog_novice" not in unlocked_achievements and total_dogs_owned >= 10: unlocked_achievements.append("dog_novice"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["dog_novice"]))
+    if "dog_collector" not in unlocked_achievements and total_dogs_owned >= 50: unlocked_achievements.append("dog_collector"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["dog_collector"]))
+    if "normal_dog" in DOG_TYPES and "normal_dog_expert" not in unlocked_achievements and user_inventory.get("normal_dog", 0) >= 25: unlocked_achievements.append("normal_dog_expert"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["normal_dog_expert"]))
+    if event_type == "catch" and "rare_find" not in unlocked_achievements and event_data and DOG_TYPES.get(event_data.get("dog_type_key"), {}).get("value", 0) >= 1000: unlocked_achievements.append("rare_find"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["rare_find"]))
+    owned_dog_types_count = len([k for k, v in user_inventory.items() if v > 0 and k in DOG_TYPES])
+    if "variety_lover" not in unlocked_achievements and owned_dog_types_count >= 10: unlocked_achievements.append("variety_lover"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["variety_lover"]))
+    
+    # Check for Master Crafter
+    if event_type == "craft" and "master_crafter" not in unlocked_achievements:
+        user_data["crafting_count"] = user_data.get("crafting_count", 0) + 1
+        if user_data["crafting_count"] >= 10:
+            unlocked_achievements.append("master_crafter")
+            newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["master_crafter"]))
+
+    # Chest Logic based on completed_quests_this_cycle
+    if len(user_data.get("completed_quests_this_cycle", [])) >= QUESTS_FOR_CHEST:
+        if not user_data.get("chest_available", False):
+            user_data["chest_available"] = True
+            user_data["completed_quests_this_cycle"] = [] # Reset for next chest
+            newly_unlocked_notifications.append(("chest", None)) 
+            print(f"User {user_id} earned a chest in guild {guild_id} from completing quests!")
+
+    if newly_unlocked_notifications:
+        save_guild_data(guild_id, guild_data)
+        user_object = None; channel_to_send = None
+        if isinstance(interaction_or_message, discord.Interaction): 
+            user_object = interaction_or_message.guild.get_member(int(user_id))
+            channel_to_send = interaction_or_message.channel
+        elif isinstance(interaction_or_message, discord.Message): 
+            user_object = interaction_or_message.guild.get_member(int(user_id))
+            channel_to_send = interaction_or_message.channel
+        
+        if user_object and channel_to_send:
+            for item_type, item_info in newly_unlocked_notifications:
                 try:
-                    dog_type_to_spawn = CURRENT_SPAWN_TYPE_KEY
-                    dog_info = DOG_TYPES[dog_type_to_spawn]
-                    dog_image_path = DOG_IMAGE_PATH_TEMPLATE.format(image_name=dog_info["image_name"])
-                    spawn_message_text = f"A {dog_info['display_name']} has appeared in {guild.name}! Type `dog` to catch it!"
-                    
-                    if os.path.exists(dog_image_path):
-                        await chosen_channel.send(spawn_message_text, file=discord.File(dog_image_path))
-                    else:
-                        await chosen_channel.send(f"{spawn_message_text}\n(Picture missing!)")
-                    
-                    active_dog_spawns[chosen_channel.id] = {"dog_type": dog_type_to_spawn, "guild_id": guild.id}
-                    print(f"[{datetime.now()}] Spawn successful in '{guild.name}' -> #{chosen_channel.name}.")
+                    if item_type == "chest":
+                        await channel_to_send.send(f"🎁 {user_object.mention} completed enough quests and earned a **Dog Chest**! Use `/chest open`.")
+                    elif item_type == "achievement" and item_info:
+                        await channel_to_send.send(f"{item_info['emoji']} {user_object.mention} unlocked achievement: **{item_info['name']}**! ({item_info['description']})")
+                except discord.Forbidden: print(f"Could not send achievement/chest notification in channel for user {user_id}.")
+                except Exception as e_send: print(f"Error sending notification: {e_send}")
 
-                    # Update this guild's next spawn time
-                    min_s = settings["min_spawn_seconds"]
-                    max_s = settings["max_spawn_seconds"]
-                    next_delay = random.randint(min_s, max_s)
-                    spawn_state["next_eligible_spawn_timestamp"] = current_timestamp + next_delay
-                    spawn_state["is_in_post_catch_cooldown"] = False # Reset cooldown if it was in one
-                    save_guild_data(guild.id, guild_data, guild.name)
-                    print(f"[{datetime.now()}] Guild '{guild.name}' next NORMAL spawn in {next_delay}s.")
+@tasks.loop(minutes=5)
+async def clear_expired_effects_task():
+    current_time = int(datetime.now(timezone.utc).timestamp()); modified_guilds_to_save = {}
+    for guild in bot.guilds:
+        guild_data = load_guild_data(guild.id, guild.name); modified_this_guild = False
+        if "user_data" in guild_data and isinstance(guild_data["user_data"], dict):
+            for uid, u_data in list(guild_data["user_data"].items()):
+                if isinstance(u_data, dict):
+                    active_fx = u_data.get("active_effects", {}); fx_to_remove = []
+                    if isinstance(active_fx, dict):
+                        for fx_key, expiry_ts in active_fx.items():
+                            if current_time >= expiry_ts: fx_to_remove.append(fx_key)
+                    if fx_to_remove:
+                        for fx_key in fx_to_remove: del active_fx[fx_key]
+                        modified_this_guild = True
+        if modified_this_guild: modified_guilds_to_save[guild.id] = (guild_data, guild.name)
+    for gid, (g_data, g_name) in modified_guilds_to_save.items(): save_guild_data(gid, g_data, g_name)
 
-                except Exception as e:
-                    print(f"[{datetime.now()}] Error spawning in guild {guild.name}: {e}")
-            # else: print(f"[{datetime.now()}] No eligible channels found in '{guild.name}' despite being time-eligible.")
-        # else: print(f"[{datetime.now()}] Guild '{guild.name}' not yet eligible for spawn.")
-    # print(f"[{datetime.now()}] PER_GUILD_SPAWN_CHECKER: Cycle finished.")
+@tasks.loop(seconds=15)
+async def per_guild_spawn_checker_task():
+    ts = int(datetime.now(timezone.utc).timestamp())
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        s = gd["settings"]
+        ss = gd["spawn_state"]
+        logger.info(f"Checking spawn for guild: {g.name} ({g.id}) at {ts}. Next eligible: {ss['next_eligible_spawn_timestamp']}")
+        if ts >= ss["next_eligible_spawn_timestamp"]:
+            allowed_spawn_channel_ids = s.get("spawn_channel_ids", [])
+            if not allowed_spawn_channel_ids:
+                logger.info(f"No spawn channels set for guild: {g.name} ({g.id})")
+                continue
+            potential_channels_for_spawn = [c_obj for c_id in allowed_spawn_channel_ids if (c_obj := g.get_channel(c_id)) and isinstance(c_obj, discord.TextChannel) and c_obj.permissions_for(g.me).send_messages and c_obj.permissions_for(g.me).attach_files and not active_dog_spawns.get(c_obj.id)]
+            if not potential_channels_for_spawn:
+                logger.info(f"No eligible channels for spawn in guild: {g.name} ({g.id})")
+                continue
+            ch = random.choice(potential_channels_for_spawn)
+            try:
+                if not DOG_SPAWN_KEYS_FOR_RANDOM or not DOG_SPAWN_WEIGHTS_FOR_RANDOM:
+                    logger.warning(f"No spawnable dog types or weights configured!")
+                    continue
+                dk = random.choices(DOG_SPAWN_KEYS_FOR_RANDOM, weights=DOG_SPAWN_WEIGHTS_FOR_RANDOM, k=1)[0]
+                di = DOG_TYPES[dk]
+                ip = DOG_IMAGE_PATH_TEMPLATE.format(image_name=di["image_name"])
+                mtxt = f"A wild **{di['display_name']}** has appeared! Type `dog` to catch it!"
+                logger.info(f"Spawning {dk} in channel {ch.name} ({ch.id}) of guild {g.name} ({g.id})")
+                s_msg = await ch.send(mtxt, file=discord.File(ip) if os.path.exists(ip) else None)
+                if not os.path.exists(ip):
+                    logger.warning(f"IMG MISSING: {ip} for {dk}")
+                if s_msg:
+                    s_time = int(datetime.now(timezone.utc).timestamp())
+                    active_dog_spawns[ch.id] = {"dog_type_key": dk, "guild_id": g.id, "message_id": s_msg.id, "spawn_timestamp": s_time}
+                    min_s_guild, max_s_guild = s["min_spawn_seconds"], s["max_spawn_seconds"]
+                    nd = random.randint(min_s_guild, max_s_guild)
+                    ss["next_eligible_spawn_timestamp"] = s_time + nd
+                    ss["is_in_post_catch_cooldown"] = False
+                    save_guild_data(g.id, gd, g.name)
+                    logger.info(f"Next spawn for guild {g.name} in {nd} seconds.")
+            except Exception as e:
+                logger.error(f"Err spawn in {g.name}: {e}")
+
+# --- QUEST DEFINITIONS (Example) ---
+QUEST_DEFINITIONS = {
+    "catch_normals_basic": {"id": "catch_normals_basic", "title": "Normal Dog Roundup", "description": "Catch 3 Normal Dogs.", "objective_type": "catch_specific", "dog_type_key": "normal_dog", "target_count": 3, "reward_type": "dogs", "reward_item_key": "dog_good", "reward_amount": 1},
+    "catch_any_starter": {"id": "catch_any_starter", "title": "First Steps", "description": "Catch any 2 dogs.", "objective_type": "catch_any", "target_count": 2, "reward_type": "dogs", "reward_item_key": "uncommon_dog", "reward_amount": 1},
+    "craft_something_simple": {"id": "craft_something_simple", "title": "Tinkerer", "description": "Craft any 1 item.", "objective_type": "craft_any", "target_count": 1, "reward_type": "arc_reactors", "reward_item_key": "charm_of_thieves_luck", "reward_amount": 1}, # Assuming charm_of_thieves_luck is a reactor key
+    "value_hunter": {"id": "value_hunter", "title": "Value Hunter", "description": "Catch a dog worth at least 500 value.", "objective_type": "catch_value_gte", "target_value": 500, "reward_type": "dogs", "reward_item_key": "fine_dog", "reward_amount": 2},
+    "variety_catcher": {"id": "variety_catcher", "title": "Variety Catcher", "description": "Catch 3 different types of dogs.", "objective_type": "catch_variety", "target_count": 3, "reward_type": "dogs", "reward_item_key": "loyal_dog", "reward_amount": 1},
+}
+
+def format_time_delta(seconds: int) -> str:
+    if seconds < 0: seconds = 0;
+    if seconds == 1: return "1 second";
+    if seconds < 60: return f"{seconds} seconds";
+    m, s = divmod(seconds, 60)
+    if m == 1 and s == 0: return "1 minute"
+    if m < 60: return f"{m} minute{'s' if m!=1 else ''}{f' and {s} second{"" if s==1 else "s"}' if s>0 else ''}"
+    h, m = divmod(m, 60)
+    h_str=f"{h} hour{'s' if h!=1 else ''}"; m_str=f"{m} minute{'s' if m!=1 else ''}" if m>0 else ""; s_str=f"{s} second{'s' if s!=1 else ''}" if s>0 else ""
+    parts = [p for p in [h_str,m_str,s_str] if p];
+    if len(parts) > 1 and "and" not in parts[-2] and len(parts[-1]) > 0 :
+        if len(parts) > 2 and len(parts[-2]) > 0: parts[-2] = f"{parts[-2]} and {parts[-1]}"
+        elif len(parts) == 2 : parts[0] = f"{parts[0]} and {parts[-1]}"
+        parts.pop();
+    return ", ".join(parts) if parts else "0 seconds"
+def get_guild_data_file_path(gid): return os.path.join(DATA_DIR, f"guild_{gid}.json")
+def _get_default_user_data_structure():
+    return {"inventory": {key: 0 for key in DOG_TYPE_KEYS}, "arc_reactors": {key: 0 for key in ARC_REACTOR_TYPE_KEYS}, "active_effects": {}, "shield_active_until": 0, "theft_fail_streak": 0, "wanted_level": False, "spawn_catch_banned_until": 0, "unlocked_achievements": [], "active_quests": {}, "completed_quests_this_cycle": [], "last_quest_reset_timestamp":0, "quests_completed_for_chest": 0, "chest_available": False }
+def load_guild_data(gid: str, gname: str = "?") -> dict:
+    path = get_guild_data_file_path(gid); ts = int(datetime.now(timezone.utc).timestamp())
+    min_dfns = DEFAULT_MIN_SPAWN_SECONDS; id_new = random.randint(min(10, min_dfns//2 if min_dfns>20 else 10), min_dfns)
+    guild_file_df = {"settings":{"min_spawn_seconds":min_dfns,"max_spawn_seconds":DEFAULT_MAX_SPAWN_SECONDS,"post_catch_spawn_seconds":DEFAULT_POST_CATCH_SPAWN_SECONDS,"server_name_for_reference":gname,"crafting_enabled":True,"theft_enabled":True,"quests_enabled":True, "spawn_channel_ids": []},"spawn_state":{"next_eligible_spawn_timestamp":ts+id_new,"is_in_post_catch_cooldown":False},"crafting_recipes":{"dogs":{},"arc_reactors":{}}, "user_data":{}}
+    if not os.path.exists(path): return guild_file_df
+    try:
+        with open(path,'r')as f:c=f.read()
+        if not c.strip(): return guild_file_df
+        data=json.loads(c)
+        for tk,tv in guild_file_df.items():
+            dt=data.setdefault(tk,tv.copy()if isinstance(tv,(dict,list))else tv)
+            if isinstance(tv,dict)and tk!="user_data":
+                for sk,sv in tv.items():
+                    if isinstance(dt,dict):dt.setdefault(sk,sv.copy()if isinstance(sv,(dict,list))else sv)
+        all_users_data = data.setdefault("user_data", {})
+        if isinstance(all_users_data, dict):
+            for uid_str, u_block_loaded in list(all_users_data.items()):
+                def_usr_struct = _get_default_user_data_structure()
+                if not isinstance(u_block_loaded, dict): all_users_data[uid_str] = def_usr_struct.copy(); continue
+                for prop_k, def_prop_v in def_usr_struct.items(): u_block_loaded.setdefault(prop_k, def_prop_v.copy() if isinstance(def_prop_v, (dict, list)) else def_prop_v)
+                inv = u_block_loaded.setdefault("inventory", {}); reac = u_block_loaded.setdefault("arc_reactors", {})
+                for dog_k_e in DOG_TYPE_KEYS: inv.setdefault(dog_k_e, 0)
+                for reac_k_e in ARC_REACTOR_TYPE_KEYS: reac.setdefault(reac_k_e, 0)
+                u_block_loaded.setdefault("completed_quests_this_cycle", []) # Ensure this exists
+        else: data["user_data"] = {}
+        s_state=data.setdefault("spawn_state",guild_file_df["spawn_state"].copy())
+        if s_state.get("next_eligible_spawn_timestamp",0)==0 or s_state.get("next_eligible_spawn_timestamp",ts)<ts-(7*24*3600):
+            min_s_res=data.get("settings",{}).get("min_spawn_seconds",DEFAULT_MIN_SPAWN_SECONDS); res_delay=random.randint(min(10,min_s_res//2 if min_s_res>20 else 10),min_s_res)
+            s_state["next_eligible_spawn_timestamp"]=ts+res_delay
+        data.setdefault("settings", {}).setdefault("spawn_channel_ids", [])
+        return data
+    except Exception as e:
+        logger.error(f"Err load guild {gid}: {e}")
+        print(f"Err load guild {gid}:{e}");import traceback;traceback.print_exc();
+        return guild_file_df
+def save_guild_data(gid,d,gname=""):
+    if not os.path.exists(DATA_DIR):
+        try:os.makedirs(DATA_DIR)
+        except Exception as e:logger.error(f"Err creating data dir for save: {e}");print(f"Err creating data dir for save: {e}");return False
+    if gname:d.setdefault("settings",{}).update({"server_name_for_reference":gname})
+    d.setdefault("settings",{}); d["settings"].setdefault("spawn_channel_ids", [])
+    d.setdefault("spawn_state",{});d.setdefault("crafting_recipes",{"dogs":{}, "arc_reactors":{}});d.setdefault("user_data",{})
+    try:
+        with open(get_guild_data_file_path(gid),'w')as f:json.dump(d,f,indent=4);return True
+    except Exception as e:logger.error(f"Err save guild {gid} data:{e}");print(f"Err save guild {gid} data:{e}");return False
+def get_user_data_block(gid: str, uid: str, guild_data_ref: dict) -> dict:
+    uid_s = str(uid); all_users_data = guild_data_ref.setdefault("user_data", {})
+    if uid_s not in all_users_data or not isinstance(all_users_data[uid_s], dict): all_users_data[uid_s] = _get_default_user_data_structure()
+    else:
+        user_block = all_users_data[uid_s]; default_user_struct_template = _get_default_user_data_structure()
+        for key, default_value in default_user_struct_template.items(): user_block.setdefault(key, default_value.copy() if isinstance(default_value, (dict, list)) else default_value)
+        inv = user_block.setdefault("inventory", {}); reac = user_block.setdefault("arc_reactors", {})
+        for dog_key in DOG_TYPE_KEYS: inv.setdefault(dog_key, 0)
+        for reactor_key in ARC_REACTOR_TYPE_KEYS: reac.setdefault(reactor_key, 0)
+        user_block.setdefault("completed_quests_this_cycle",[])
+    return all_users_data[uid_s]
+
+async def update_quest_progress(source_event, user_id: str, guild_id: str, event_type: str, event_data: dict):
+    guild_data = load_guild_data(guild_id)
+    user_data = get_user_data_block(guild_id, user_id, guild_data)
+    active_quests = user_data.setdefault("active_quests", {})
+    completed_this_cycle = user_data.setdefault("completed_quests_this_cycle", [])
+    quests_to_remove_from_active = []
+    newly_completed_for_chat_notification = []
+
+    for quest_id, quest_prog_data in active_quests.items():
+        quest_def = QUEST_DEFINITIONS.get(quest_id)
+        if not quest_def: continue
+        objective_met = False
+        current_progress = quest_prog_data.get("progress", 0)
+        target = quest_prog_data.get("target", 1)
+
+        if event_type == quest_def["objective_type"]:
+            if event_type == "catch_specific":
+                if event_data.get("dog_type_key") == quest_def.get("dog_type_key"):
+                    current_progress += 1
+            elif event_type == "catch_any":
+                current_progress += 1
+            elif event_type == "craft_any": # Assumes event_data={"item_key": "crafted_item_key", "category": "dogs/reactors"}
+                current_progress +=1 
+            # Add other event_types here like "steal_dog", "use_reactor" etc.
+        
+        if quest_def["objective_type"] == "total_value": # This needs recalculation based on current inventory
+            current_total_value = 0; user_inv = user_data.get("inventory", {})
+            for dk, dc in user_inv.items():
+                if dk in DOG_TYPES: current_total_value += DOG_TYPES[dk].get("value",0) * dc
+            current_progress = current_total_value
+            
+        quest_prog_data["progress"] = current_progress
+        if current_progress >= target: objective_met = True
+
+        if objective_met:
+            if quest_id not in completed_this_cycle: 
+                completed_this_cycle.append(quest_id)
+                newly_completed_for_chat_notification.append(quest_def["title"])
+            quests_to_remove_from_active.append(quest_id)
+            # Give quest reward (simplified, assuming direct inventory add)
+            reward_type = quest_def.get("reward_type"); reward_item = quest_def.get("reward_item_key"); reward_amount = quest_def.get("reward_amount", 1)
+            if reward_type == "dogs" and reward_item in DOG_TYPES: user_data["inventory"][reward_item] = user_data["inventory"].get(reward_item, 0) + reward_amount
+            elif reward_type == "arc_reactors" and reward_item in ARC_REACTOR_TYPES: user_data["arc_reactors"][reward_item] = user_data["arc_reactors"].get(reward_item, 0) + reward_amount
+            # Add XP later if you have an XP system
+
+    for qid_done in quests_to_remove_from_active:
+        if qid_done in active_quests: del active_quests[qid_done]
+        user_data.setdefault("completed_quests", []).append(qid_done)
+    
+    if newly_completed_for_chat_notification: # Send chat notification for completed quests
+        user_object = None
+        if isinstance(source_event, discord.Interaction): user_object = source_event.guild.get_member(int(user_id))
+        elif isinstance(source_event, discord.Message): user_object = source_event.guild.get_member(int(user_id))
+        if user_object:
+            completed_titles = ", ".join([f"**{title}**" for title in newly_completed_for_chat_notification])
+            channel_to_send = source_event.channel if isinstance(source_event, discord.Message) else source_event.channel
+            if channel_to_send:
+                try: await channel_to_send.send(f"🎉 {user_object.mention} completed quest(s): {completed_titles}!")
+                except: pass # Ignore if cannot send
+    
+    save_guild_data(guild_id, guild_data) # Save changes after processing all quests
+    await check_achievements_and_chest(source_event, user_id, guild_id, "quest_progress_update", {}) # Re-check for chest/achievements
 
 
-# --- Bot Events ---
+async def check_achievements_and_chest(interaction_or_message, user_id: str, guild_id: str, event_type: str, event_data: dict = None):
+    guild_data = load_guild_data(guild_id); user_data = get_user_data_block(guild_id, user_id, guild_data)
+    unlocked_achievements = user_data.setdefault("unlocked_achievements", []); user_inventory = user_data.get("inventory", {})
+    newly_unlocked_notifications = [] # Store tuples of (type, name, description, emoji)
+
+    if event_type == "catch" and "first_catch" not in unlocked_achievements: unlocked_achievements.append("first_catch"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["first_catch"]))
+    total_dogs_owned = sum(user_inventory.values())
+    if "dog_novice" not in unlocked_achievements and total_dogs_owned >= 10: unlocked_achievements.append("dog_novice"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["dog_novice"]))
+    if "dog_collector" not in unlocked_achievements and total_dogs_owned >= 50: unlocked_achievements.append("dog_collector"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["dog_collector"]))
+    if "normal_dog" in DOG_TYPES and "normal_dog_expert" not in unlocked_achievements and user_inventory.get("normal_dog", 0) >= 25: unlocked_achievements.append("normal_dog_expert"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["normal_dog_expert"]))
+    if event_type == "catch" and "rare_find" not in unlocked_achievements and event_data and DOG_TYPES.get(event_data.get("dog_type_key"), {}).get("value", 0) >= 1000: unlocked_achievements.append("rare_find"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["rare_find"]))
+    owned_dog_types_count = len([k for k, v in user_inventory.items() if v > 0 and k in DOG_TYPES])
+    if "variety_lover" not in unlocked_achievements and owned_dog_types_count >= 10: unlocked_achievements.append("variety_lover"); newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["variety_lover"]))
+    
+    # Check for Master Crafter
+    if event_type == "craft" and "master_crafter" not in unlocked_achievements:
+        user_data["crafting_count"] = user_data.get("crafting_count", 0) + 1
+        if user_data["crafting_count"] >= 10:
+            unlocked_achievements.append("master_crafter")
+            newly_unlocked_notifications.append(("achievement", ACHIEVEMENTS["master_crafter"]))
+
+    # Chest Logic based on completed_quests_this_cycle
+    if len(user_data.get("completed_quests_this_cycle", [])) >= QUESTS_FOR_CHEST:
+        if not user_data.get("chest_available", False):
+            user_data["chest_available"] = True
+            user_data["completed_quests_this_cycle"] = [] # Reset for next chest
+            newly_unlocked_notifications.append(("chest", None)) 
+            print(f"User {user_id} earned a chest in guild {guild_id} from completing quests!")
+
+    if newly_unlocked_notifications:
+        save_guild_data(guild_id, guild_data)
+        user_object = None; channel_to_send = None
+        if isinstance(interaction_or_message, discord.Interaction): 
+            user_object = interaction_or_message.guild.get_member(int(user_id))
+            channel_to_send = interaction_or_message.channel
+        elif isinstance(interaction_or_message, discord.Message): 
+            user_object = interaction_or_message.guild.get_member(int(user_id))
+            channel_to_send = interaction_or_message.channel
+        
+        if user_object and channel_to_send:
+            for item_type, item_info in newly_unlocked_notifications:
+                try:
+                    if item_type == "chest":
+                        await channel_to_send.send(f"🎁 {user_object.mention} completed enough quests and earned a **Dog Chest**! Use `/chest open`.")
+                    elif item_type == "achievement" and item_info:
+                        await channel_to_send.send(f"{item_info['emoji']} {user_object.mention} unlocked achievement: **{item_info['name']}**! ({item_info['description']})")
+                except discord.Forbidden: print(f"Could not send achievement/chest notification in channel for user {user_id}.")
+                except Exception as e_send: print(f"Error sending notification: {e_send}")
+
+@tasks.loop(minutes=5)
+async def clear_expired_effects_task():
+    current_time = int(datetime.now(timezone.utc).timestamp()); modified_guilds_to_save = {}
+    for guild in bot.guilds:
+        guild_data = load_guild_data(guild.id, guild.name); modified_this_guild = False
+        if "user_data" in guild_data and isinstance(guild_data["user_data"], dict):
+            for uid, u_data in list(guild_data["user_data"].items()):
+                if isinstance(u_data, dict):
+                    active_fx = u_data.get("active_effects", {}); fx_to_remove = []
+                    if isinstance(active_fx, dict):
+                        for fx_key, expiry_ts in active_fx.items():
+                            if current_time >= expiry_ts: fx_to_remove.append(fx_key)
+                    if fx_to_remove:
+                        for fx_key in fx_to_remove: del active_fx[fx_key]
+                        modified_this_guild = True
+        if modified_this_guild: modified_guilds_to_save[guild.id] = (guild_data, guild.name)
+    for gid, (g_data, g_name) in modified_guilds_to_save.items(): save_guild_data(gid, g_data, g_name)
+
+@tasks.loop(seconds=15)
+async def per_guild_spawn_checker_task():
+    ts = int(datetime.now(timezone.utc).timestamp())
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        s = gd["settings"]
+        ss = gd["spawn_state"]
+        logger.info(f"Checking spawn for guild: {g.name} ({g.id}) at {ts}. Next eligible: {ss['next_eligible_spawn_timestamp']}")
+        if ts >= ss["next_eligible_spawn_timestamp"]:
+            allowed_spawn_channel_ids = s.get("spawn_channel_ids", [])
+            if not allowed_spawn_channel_ids:
+                logger.info(f"No spawn channels set for guild: {g.name} ({g.id})")
+                continue
+            potential_channels_for_spawn = [c_obj for c_id in allowed_spawn_channel_ids if (c_obj := g.get_channel(c_id)) and isinstance(c_obj, discord.TextChannel) and c_obj.permissions_for(g.me).send_messages and c_obj.permissions_for(g.me).attach_files and not active_dog_spawns.get(c_obj.id)]
+            if not potential_channels_for_spawn:
+                logger.info(f"No eligible channels for spawn in guild: {g.name} ({g.id})")
+                continue
+            ch = random.choice(potential_channels_for_spawn)
+            try:
+                if not DOG_SPAWN_KEYS_FOR_RANDOM or not DOG_SPAWN_WEIGHTS_FOR_RANDOM:
+                    logger.warning(f"No spawnable dog types or weights configured!")
+                    continue
+                dk = random.choices(DOG_SPAWN_KEYS_FOR_RANDOM, weights=DOG_SPAWN_WEIGHTS_FOR_RANDOM, k=1)[0]
+                di = DOG_TYPES[dk]
+                ip = DOG_IMAGE_PATH_TEMPLATE.format(image_name=di["image_name"])
+                mtxt = f"A wild **{di['display_name']}** has appeared! Type `dog` to catch it!"
+                logger.info(f"Spawning {dk} in channel {ch.name} ({ch.id}) of guild {g.name} ({g.id})")
+                s_msg = await ch.send(mtxt, file=discord.File(ip) if os.path.exists(ip) else None)
+                if not os.path.exists(ip):
+                    logger.warning(f"IMG MISSING: {ip} for {dk}")
+                if s_msg:
+                    s_time = int(datetime.now(timezone.utc).timestamp())
+                    active_dog_spawns[ch.id] = {"dog_type_key": dk, "guild_id": g.id, "message_id": s_msg.id, "spawn_timestamp": s_time}
+                    min_s_guild, max_s_guild = s["min_spawn_seconds"], s["max_spawn_seconds"]
+                    nd = random.randint(min_s_guild, max_s_guild)
+                    ss["next_eligible_spawn_timestamp"] = s_time + nd
+                    ss["is_in_post_catch_cooldown"] = False
+                    save_guild_data(g.id, gd, g.name)
+                    logger.info(f"Next spawn for guild {g.name} in {nd} seconds.")
+            except Exception as e:
+                logger.error(f"Err spawn in {g.name}: {e}")
+
+# --- QUEST DEFINITIONS (Example) ---
+QUEST_DEFINITIONS = {
+    "catch_normals_basic": {"id": "catch_normals_basic", "title": "Normal Dog Roundup", "description": "Catch 3 Normal Dogs.", "objective_type": "catch_specific", "dog_type_key": "normal_dog", "target_count": 3, "reward_type": "dogs", "reward_item_key": "dog_good", "reward_amount": 1},
+    "catch_any_starter": {"id": "catch_any_starter", "title": "First Steps", "description": "Catch any 2 dogs.", "objective_type": "catch_any", "target_count": 2, "reward_type": "dogs", "reward_item_key": "uncommon_dog", "reward_amount": 1},
+    "craft_something_simple": {"id": "craft_something_simple", "title": "Tinkerer", "description": "Craft any 1 item.", "objective_type": "craft_any", "target_count": 1, "reward_type": "arc_reactors", "reward_item_key": "charm_of_thieves_luck", "reward_amount": 1}, # Assuming charm_of_thieves_luck is a reactor key
+    "value_hunter": {"id": "value_hunter", "title": "Value Hunter", "description": "Catch a dog worth at least 500 value.", "objective_type": "catch_value_gte", "target_value": 500, "reward_type": "dogs", "reward_item_key": "fine_dog", "reward_amount": 2},
+    "variety_catcher": {"id": "variety_catcher", "title": "Variety Catcher", "description": "Catch 3 different types of dogs.", "objective_type": "catch_variety", "target_count": 3, "reward_type": "dogs", "reward_item_key": "loyal_dog", "reward_amount": 1},
+}
+
 @bot.event
 async def on_ready():
-    print(f"[{datetime.now()}] ON_READY: Bot '{bot.user.name}' has connected!")
+    logger.info(f"ON_READY: '{bot.user.name}' connected! (ID: {bot.user.id})")
     if not os.path.exists(DATA_DIR):
-        try: os.makedirs(DATA_DIR)
-        except Exception as e: print(f"[{datetime.now()}] ON_READY: Error creating data dir: {e}")
-
-    for guild in bot.guilds: # Ensure all guilds have a data file initialized
-        guild_data = load_guild_data(guild.id, guild.name)
-        save_guild_data(guild.id, guild_data, guild.name) # Save to create/update
-        print(f"[{datetime.now()}] Initialized/checked data for guild: {guild.name} (ID: {guild.id})")
-        # Initialize next_eligible_spawn_timestamp if it's 0 (first run for this guild)
-        if guild_data["spawn_state"]["next_eligible_spawn_timestamp"] == 0 :
-            current_ts = int(datetime.now(timezone.utc).timestamp())
-            initial_delay = random.randint(min(10, guild_data["settings"]["min_spawn_seconds"]), guild_data["settings"]["min_spawn_seconds"])
-            guild_data["spawn_state"]["next_eligible_spawn_timestamp"] = current_ts + initial_delay
-            save_guild_data(guild.id, guild_data, guild.name)
-            print(f"[{datetime.now()}] Set initial spawn eligibility for {guild.name} in {initial_delay}s.")
-
-
-    print(f"[{datetime.now()}] ON_READY: Attempting GLOBAL command sync...")
+        os.makedirs(DATA_DIR)
+        logger.info(f"Created data directory at {DATA_DIR}")
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        save_guild_data(g.id, gd, g.name)
+        logger.info(f"Loaded and saved data for guild: {g.name} ({g.id})")
     try:
-        synced_commands = await bot.tree.sync()
-        print(f"[{datetime.now()}] ON_READY: Synced {len(synced_commands)} commands globally.")
-    except Exception as e: print(f"[{datetime.now()}] ON_READY: Error global command sync: {e}")
-
+        synced = await bot.tree.sync()
+        logger.info(f"ON_READY: Synced {len(synced)} commands: {[cmd.name for cmd in synced]}")
+        print(f"ON_READY: Synced {len(synced)} commands: {[cmd.name for cmd in synced]}")
+    except Exception as e:
+        logger.error(f"ON_READY: Error syncing commands: {e}")
+    
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        spawn_channels = gd.get('settings', {}).get('spawn_channel_ids', [])
+        logger.info(f"Guild: {g.name} ({g.id}) | Spawn Channels: {spawn_channels}")
+        for ch_id in spawn_channels:
+            ch = g.get_channel(ch_id)
+            logger.info(f"  - Channel: {ch.name if ch else 'N/A'} ({ch_id})")
     if not per_guild_spawn_checker_task.is_running():
-        print(f"[{datetime.now()}] ON_READY: Starting per-guild spawn check loop...")
         per_guild_spawn_checker_task.start()
+        logger.info("Started per_guild_spawn_checker_task loop.")
+    if not clear_expired_effects_task.is_running():
+        clear_expired_effects_task.start()
+        logger.info("Started clear_expired_effects_task loop.")
+    if not quest_reset_task.is_running():
+        quest_reset_task.start()
+        logger.info("Started quest_reset_task loop.")
+    logger.info("Bot is fully ready and all background tasks are running.")
+
+@tasks.loop(minutes=2)
+async def log_guild_status_task():
+    logger.info("--- Guild/Spawn Status ---")
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        spawn_channels = gd.get('settings', {}).get('spawn_channel_ids', [])
+        next_spawn = gd.get('spawn_state', {}).get('next_eligible_spawn_timestamp', 0)
+        logger.info(f"Guild: {g.name} ({g.id}) | Spawn Channels: {spawn_channels} | Next Spawn: {datetime.fromtimestamp(next_spawn, timezone.utc) if next_spawn else 'N/A'}")
+        for ch_id in spawn_channels:
+            ch = g.get_channel(ch_id)
+            logger.info(f"  - Channel: {ch.name if ch else 'N/A'} ({ch_id})")
+    logger.info("-------------------------")
+
+if not log_guild_status_task.is_running():
+    log_guild_status_task.start()
+
+# --- QUEST DEFINITIONS (Example) ---
+QUEST_DEFINITIONS = {
+    "catch_normals_basic": {"id": "catch_normals_basic", "title": "Normal Dog Roundup", "description": "Catch 3 Normal Dogs.", "objective_type": "catch_specific", "dog_type_key": "normal_dog", "target_count": 3, "reward_type": "dogs", "reward_item_key": "dog_good", "reward_amount": 1},
+    "catch_any_starter": {"id": "catch_any_starter", "title": "First Steps", "description": "Catch any 2 dogs.", "objective_type": "catch_any", "target_count": 2, "reward_type": "dogs", "reward_item_key": "uncommon_dog", "reward_amount": 1},
+    "craft_something_simple": {"id": "craft_something_simple", "title": "Tinkerer", "description": "Craft any 1 item.", "objective_type": "craft_any", "target_count": 1, "reward_type": "arc_reactors", "reward_item_key": "charm_of_thieves_luck", "reward_amount": 1}, # Assuming charm_of_thieves_luck is a reactor key
+    "value_hunter": {"id": "value_hunter", "title": "Value Hunter", "description": "Catch a dog worth at least 500 value.", "objective_type": "catch_value_gte", "target_value": 500, "reward_type": "dogs", "reward_item_key": "fine_dog", "reward_amount": 2},
+    "variety_catcher": {"id": "variety_catcher", "title": "Variety Catcher", "description": "Catch 3 different types of dogs.", "objective_type": "catch_variety", "target_count": 3, "reward_type": "dogs", "reward_item_key": "loyal_dog", "reward_amount": 1},
+}
 
 @bot.event
-async def on_guild_join(guild):
-    print(f"[{datetime.now()}] Joined new guild: {guild.name} (ID: {guild.id})")
-    guild_data = load_guild_data(guild.id, guild.name) # Initialize with defaults
-    current_ts = int(datetime.now(timezone.utc).timestamp())
-    initial_delay = random.randint(min(10, guild_data["settings"]["min_spawn_seconds"]), guild_data["settings"]["min_spawn_seconds"])
-    guild_data["spawn_state"]["next_eligible_spawn_timestamp"] = current_ts + initial_delay # Set initial spawn time
-    save_guild_data(guild.id, guild_data, guild.name) # Save to create file
-    print(f"[{datetime.now()}] Initialized data for new guild {guild.name}. Next spawn check relevant in {initial_delay}s.")
+async def on_ready():
+    logger.info(f"ON_READY: '{bot.user.name}' connected! (ID: {bot.user.id})")
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
+        logger.info(f"Created data directory at {DATA_DIR}")
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        save_guild_data(g.id, gd, g.name)
+        logger.info(f"Loaded and saved data for guild: {g.name} ({g.id})")
+    try:
+        synced = await bot.tree.sync()
+        logger.info(f"ON_READY: Synced {len(synced)} commands: {[cmd.name for cmd in synced]}")
+        print(f"ON_READY: Synced {len(synced)} commands: {[cmd.name for cmd in synced]}")
+    except Exception as e:
+        logger.error(f"ON_READY: Error syncing commands: {e}")
+    
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        spawn_channels = gd.get('settings', {}).get('spawn_channel_ids', [])
+        logger.info(f"Guild: {g.name} ({g.id}) | Spawn Channels: {spawn_channels}")
+        for ch_id in spawn_channels:
+            ch = g.get_channel(ch_id)
+            logger.info(f"  - Channel: {ch.name if ch else 'N/A'} ({ch_id})")
+    if not per_guild_spawn_checker_task.is_running():
+        per_guild_spawn_checker_task.start()
+        logger.info("Started per_guild_spawn_checker_task loop.")
+    if not clear_expired_effects_task.is_running():
+        clear_expired_effects_task.start()
+        logger.info("Started clear_expired_effects_task loop.")
+    if not quest_reset_task.is_running():
+        quest_reset_task.start()
+        logger.info("Started quest_reset_task loop.")
+    logger.info("Bot is fully ready and all background tasks are running.")
+
+@tasks.loop(minutes=2)
+async def log_guild_status_task():
+    logger.info("--- Guild/Spawn Status ---")
+    for g in bot.guilds:
+        gd = load_guild_data(g.id, g.name)
+        spawn_channels = gd.get('settings', {}).get('spawn_channel_ids', [])
+        next_spawn = gd.get('spawn_state', {}).get('next_eligible_spawn_timestamp', 0)
+        logger.info(f"Guild: {g.name} ({g.id}) | Spawn Channels: {spawn_channels} | Next Spawn: {datetime.fromtimestamp(next_spawn, timezone.utc) if next_spawn else 'N/A'}")
+        for ch_id in spawn_channels:
+            ch = g.get_channel(ch_id)
+            logger.info(f"  - Channel: {ch.name if ch else 'N/A'} ({ch_id})")
+    logger.info("-------------------------")
+
+if not log_guild_status_task.is_running():
+    log_guild_status_task.start()
+
+# --- QUEST DEFINITIONS (Example) ---
+QUEST_DEFINITIONS = {
+    "catch_normals_basic": {"id": "catch_normals_basic", "title": "Normal Dog Roundup", "description": "Catch 3 Normal Dogs.", "objective_type": "catch_specific", "dog_type_key": "normal_dog", "target_count": 3, "reward_type": "dogs", "reward_item_key": "dog_good", "reward_amount": 1},
+    "catch_any_starter": {"id": "catch_any_starter", "title": "First Steps", "description": "Catch any 2 dogs.", "objective_type": "catch_any", "target_count": 2, "reward_type": "dogs", "reward_item_key": "uncommon_dog", "reward_amount": 1},
+    "craft_something_simple": {"id": "craft_something_simple", "title": "Tinkerer", "description": "Craft any 1 item.", "objective_type": "craft_any", "target_count": 1, "reward_type": "arc_reactors", "reward_item_key": "charm_of_thieves_luck", "reward_amount": 1}, # Assuming charm_of_thieves_luck is a reactor key
+    "value_hunter": {"id": "value_hunter", "title": "Value Hunter", "description": "Catch a dog worth at least 500 value.", "objective_type": "catch_value_gte", "target_value": 500, "reward_type": "dogs", "reward_item_key": "fine_dog", "reward_amount": 2},
+    "variety_catcher": {"id": "variety_catcher", "title": "Variety Catcher", "description": "Catch 3 different types of dogs.", "objective_type": "catch_variety", "target_count": 3, "reward_type": "dogs", "reward_item_key": "loyal_dog", "reward_amount": 1},
+}
+
+# --- Task for Quest Resets ---
+@tasks.loop(hours=QUEST_RESET_HOURS)
+async def quest_reset_task():
+    logger.info(f"[{datetime.now()}] TASK: Running quest reset for all users.")
+    current_time = int(datetime.now(timezone.utc).timestamp())
+    for guild in bot.guilds:
+        guild_data = load_guild_data(str(guild.id), guild.name) # Ensure gid is string
+        if "user_data" in guild_data and isinstance(guild_data["user_data"], dict):
+            for user_id_str, user_data_block in guild_data["user_data"].items():
+                if not isinstance(user_data_block, dict): continue
+
+                user_data_block["completed_quests_this_cycle"] = []
+                user_data_block["last_quest_reset_timestamp"] = current_time
+                
+                active_quests = user_data_block.setdefault("active_quests", {})
+                active_quests.clear() 
+
+                # Get list of quests user hasn't completed EVER for variety, or allow repeats
+                # For simplicity, allow repeats for now, just pick randomly.
+                available_quest_pool = list(QUEST_DEFINITIONS.keys())
+                random.shuffle(available_quest_pool)
+                
+                new_quests_assigned_count = 0
+                for quest_id in available_quest_pool:
+                    if len(active_quests) < MAX_ACTIVE_QUESTS:
+                        quest_def = QUEST_DEFINITIONS[quest_id]
+                        active_quests[quest_id] = {
+                            "progress": 0,
+                            "target": quest_def.get("target_count") or quest_def.get("target_value", 1),
+                            "title": quest_def["title"],
+                            "description": quest_def["description"],
+                            "objective_type": quest_def["objective_type"],
+                            "dog_type_key": quest_def.get("dog_type_key"), # For catch_specific
+                            "caught_variety": [] # For catch_variety
+                        }
+                        new_quests_assigned_count +=1
+                    else:
+                        break
+                # print(f"Assigned {new_quests_assigned_count} new quests to user {user_id_str} in guild {guild.id}") # Can be verbose
+            save_guild_data(str(guild.id), guild_data, guild.name)
+    logger.info(f"[{datetime.now()}] TASK: Quest reset finished.")
 
 
-@bot.event
-async def on_message(message):
-    if message.author == bot.user or not message.guild: return
+# --- Helper to Update Quest Progress ---
+async def update_quest_progress(source_event, user_id: str, guild_id: str, event_type: str, event_data: dict = None):
+    # Ensure source_event has .guild and .channel attributes if needed for notifications
+    if event_data is None: event_data = {}
+    guild_data = load_guild_data(guild_id)
+    user_data = get_user_data_block(guild_id, user_id, guild_data)
+    active_quests = user_data.get("active_quests", {})
+    completed_this_cycle = user_data.setdefault("completed_quests_this_cycle", [])
+    
+    quests_to_remove_from_active = []
+    newly_completed_titles_for_chat = []
 
-    if message.content.lower() == "dog":
-        channel_id = message.channel.id
-        spawn_info = active_dog_spawns.get(channel_id) # Now a dict
+    for quest_id, quest_prog_data in list(active_quests.items()): # Iterate copy if modifying
+        quest_def = QUEST_DEFINITIONS.get(quest_id)
+        if not quest_def: continue
 
-        if spawn_info and spawn_info["guild_id"] == message.guild.id:
-            spawned_dog_type_key = spawn_info["dog_type"]
-            guild_id_of_spawn = spawn_info["guild_id"]
+        objective_met = False
+        current_progress = quest_prog_data.get("progress", 0)
+        target = quest_prog_data.get("target", 1) # Default target to 1 if not specified
+
+        if event_type == quest_def["objective_type"]:
+            if event_type == "catch_specific" and event_data.get("dog_type_key") == quest_def.get("dog_type_key"):
+                current_progress += 1
+            elif event_type == "catch_any" and event_type == "catch":
+                current_progress += 1
+            elif event_type == "craft_any" and event_type == "craft":
+                current_progress += 1
+            elif event_type == "catch_value_gte" and event_type == "catch":
+                caught_dog_key = event_data.get("dog_type_key")
+                if caught_dog_key and DOG_TYPES.get(caught_dog_key, {}).get("value", 0) >= quest_def.get("target_value", float('inf')):
+                    current_progress +=1 # Or simply set to target if it's a one-time achieve
+            elif event_type == "catch_variety" and event_type == "catch":
+                caught_dog_key = event_data.get("dog_type_key")
+                if caught_dog_key:
+                    caught_variety_list = quest_prog_data.setdefault("caught_variety", [])
+                    if caught_dog_key not in caught_variety_list:
+                        caught_variety_list.append(caught_dog_key)
+                        current_progress = len(caught_variety_list)
+        
+        # For objectives checked against current state rather than incremented by event
+        if quest_def["objective_type"] == "total_value":
+            user_inventory = user_data.get("inventory", {})
+            current_total_value = sum(DOG_TYPES[dk].get("value",0) * dc for dk, dc in user_inventory.items() if dk in DOG_TYPES)
+            current_progress = current_total_value
             
-            try:
-                print(f"[{datetime.now()}] CATCH EVENT: '{message.author.name}' catching in guild {message.guild.name}.")
-                del active_dog_spawns[channel_id] # Dog is caught
+        quest_prog_data["progress"] = current_progress
+        if current_progress >= target: objective_met = True
 
-                # Update user inventory (same as before)
-                user_id_str = str(message.author.id)
-                guild_data = load_guild_data(guild_id_of_spawn, message.guild.name)
-                inventories = guild_data.setdefault("user_inventories", {})
-                user_inv = inventories.setdefault(user_id_str, {})
-                user_inv[spawned_dog_type_key] = user_inv.get(spawned_dog_type_key, 0) + 1
+        if objective_met:
+            if quest_id not in completed_this_cycle: 
+                completed_this_cycle.append(quest_id)
+                newly_completed_titles_for_chat.append(quest_def["title"])
+            quests_to_remove_from_active.append(quest_id)
+            
+            reward_type = quest_def.get("reward_type"); reward_item = quest_def.get("reward_item_key"); reward_amount = quest_def.get("reward_amount", 1)
+            if reward_type == "dogs" and reward_item in DOG_TYPES: user_data["inventory"][reward_item] = user_data["inventory"].get(reward_item, 0) + reward_amount
+            elif reward_type == "arc_reactors" and reward_item in ARC_REACTOR_TYPES: user_data.setdefault("arc_reactors",{})[reward_item] = user_data["arc_reactors"].get(reward_item, 0) + reward_amount
+    
+    for qid_done in quests_to_remove_from_active:
+        if qid_done in active_quests: del active_quests[qid_done]
+        user_data.setdefault("completed_quests", []).append(qid_done) # Lifetime completed (optional)
+    
+    if newly_completed_titles_for_chat:
+        user_object = None; channel_to_send = None
+        if isinstance(source_event, discord.Interaction): user_object = source_event.guild.get_member(int(user_id)); channel_to_send = source_event.channel
+        elif isinstance(source_event, discord.Message): user_object = source_event.guild.get_member(int(user_id)); channel_to_send = source_event.channel
+        if user_object and channel_to_send:
+            try: await channel_to_send.send(f"📜 {user_object.mention} completed quest(s): {', '.join(['**'+t+'**' for t in newly_completed_titles_for_chat])}!")
+            except: pass
+    
+    # Check for chest AFTER processing all quest updates for this event
+    if len(user_data.get("completed_quests_this_cycle",[])) >= QUESTS_FOR_CHEST:
+        if not user_data.get("chest_available", False):
+            user_data["chest_available"] = True
+            user_data["completed_quests_this_cycle"] = [] # Reset for next chest earning cycle
+            if user_object and channel_to_send: # Notify about chest earned
+                try: await channel_to_send.send(f"🎁 {user_object.mention} You've completed enough quests and earned a **Dog Chest**! Use `/chest open`.")
+                except: pass
+            elif user_object: # Try DM if channel not available
+                try: await user_object.send(f"🎁 You've completed enough quests and earned a **Dog Chest**! Use `/chest open` in a server channel.")
+                except: pass
+
+    save_guild_data(guild_id, guild_data) # Save all changes to user_data
+    # We call check_achievements_and_chest separately, potentially after this.
+    # Or, call it from within here if a quest completion itself is an achievement.
+
+# --- QUESTS COMMAND ---
+@bot.tree.command(name="quests", description="View your current active quests.")
+async def quests_view_slash(interaction: discord.Interaction):
+    if not interaction.guild: await interaction.response.send_message("Server only.",ephemeral=True); return
+    
+    gid = str(interaction.guild.id); uid = str(interaction.user.id)
+    # It's important to load guild_data once if multiple operations are done on it
+    guild_data = load_guild_data(gid, interaction.guild.name) 
+    user_data = get_user_data_block(gid, uid, guild_data) # Pass loaded guild_data
+    active_quests = user_data.get("active_quests", {})
+
+    embed = discord.Embed(title=f"📜 {interaction.user.display_name}'s Active Quests", color=discord.Color.dark_purple())
+    if not active_quests:
+        embed.description = "You have no active quests. New quests are assigned roughly every 10 hours!"
+    else:
+        quest_lines = []
+        for quest_id, prog_data in active_quests.items():
+            quest_def = QUEST_DEFINITIONS.get(quest_id) 
+            if quest_def: # Ensure quest_def is found (it should be if in active_quests)
+                progress = prog_data.get("progress", 0)
+                target = prog_data.get("target", 1) 
                 
-                # Set this guild for a quick post-catch spawn
-                current_timestamp = int(datetime.now(timezone.utc).timestamp())
-                post_catch_delay = guild_data["settings"].get("post_catch_spawn_seconds", DEFAULT_POST_CATCH_SPAWN_SECONDS)
-                
-                guild_data["spawn_state"]["next_eligible_spawn_timestamp"] = current_timestamp + post_catch_delay
-                guild_data["spawn_state"]["is_in_post_catch_cooldown"] = True # Mark it
-                
-                save_guild_data(guild_id_of_spawn, guild_data, message.guild.name)
-                print(f"[{datetime.now()}] Guild '{message.guild.name}' set for post-catch spawn in {post_catch_delay}s.")
+                # Visual progress bar
+                bar_length = 10
+                filled_length = 0
+                if target > 0 : # Avoid division by zero if target is 0 (should not happen for counts)
+                    progress_percent = (progress / target) * 100
+                    filled_length = int(progress_percent / (100/bar_length) )
+                    filled_length = min(bar_length, filled_length) # Cap at bar_length
+                elif progress >= target : # If target is 0 or less, and progress is also met
+                     filled_length = bar_length
 
-                dog_info = DOG_TYPES[spawned_dog_type_key]
-                emoji_str = f"<:{dog_info['emoji_name']}:{dog_info['emoji_id']}>" if dog_info.get('emoji_id') else CAUGHT_DOG_EMOJI_FALLBACK
-                await message.channel.send(f"Good catch, {message.author.mention}! You got {dog_info['display_name']}! {emoji_str}")
+                progress_bar = "🟩" * filled_length + "⬜" * (bar_length - filled_length)
+                quest_lines.append(f"**{prog_data.get('title', quest_def['title'])}**: {prog_data.get('description', quest_def['description'])}\nProgress: {progress}/{target} {progress_bar}")
+        
+        if quest_lines:
+            embed.description = "\n\n".join(quest_lines)
+        else:
+            embed.description = "You have no active quests currently, or there was an issue displaying them."
+            
+    last_reset_ts = user_data.get("last_quest_reset_timestamp", 0)
+    next_reset_ts = last_reset_ts + (QUEST_RESET_HOURS * 3600)
+    current_ts = int(datetime.now(timezone.utc).timestamp())
 
-            except Exception as e:
-                print(f"[{datetime.now()}] CATCH EVENT: Error: {e}"); await message.channel.send("Woof! Error during catch.")
+    if next_reset_ts > current_ts:
+        time_to_reset = next_reset_ts - current_ts
+        embed.set_footer(text=f"New quests available in approximately: {format_time_delta(time_to_reset)}")
+    else:
+        embed.set_footer(text=f"Quest reset period is active. New quests should appear soon!")
 
-# --- Slash Commands (inventory is same, changespawntimings updated) ---
-@bot.tree.command(name="inventory", description="Shows your caught dog inventory.") # Same as before
-async def inventory_slash(interaction: discord.Interaction):
-    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
-    user_inv = get_user_inventory(interaction.guild.id, interaction.user.id)
-    if not user_inv or all(count == 0 for count in user_inv.values()):
-        await interaction.response.send_message("Empty inventory.", ephemeral=True); return
-    embed = discord.Embed(title=f"{interaction.user.display_name}'s Inventory", color=discord.Color.green())
-    display = [f"<:{DOG_TYPES[key]['emoji_name']}:{DOG_TYPES[key]['emoji_id']}> {DOG_TYPES[key]['display_name']}: **{count}**" if DOG_TYPES.get(key,{}).get('emoji_id') else f"{CAUGHT_DOG_EMOJI_FALLBACK} {DOG_TYPES.get(key,{}).get('display_name','Unknown')}: **{count}**"
-               for key, count in user_inv.items() if count > 0]
-    embed.description = "\n".join(display) if display else "No dogs caught yet!"
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# --- CHEST COMMAND ---
+@bot.tree.command(name="chest", description="Open a Dog Chest if you have one.")
+async def chest_open_slash(interaction: discord.Interaction):
+    if not interaction.guild: await interaction.response.send_message("Server only.",ephemeral=True); return
+    gid = str(interaction.guild.id); uid = str(interaction.user.id)
+    guild_data = load_guild_data(gid, interaction.guild.name); user_data = get_user_data_block(gid, uid, guild_data)
+    if not user_data.get("chest_available", False): await interaction.response.send_message("You don't have a Dog Chest to open. Complete more quests!", ephemeral=True); return
+    
+    user_data["chest_available"] = False # Consume the chest
+    user_inventory = user_data.setdefault("inventory", {k:0 for k in DOG_TYPE_KEYS})
+    
+    loot_table = { # dog_key: weight for this tier
+        1: {"chance": 0.50, "rewards": {"normal_dog": 5, "dog_good": 3}, "num_items_to_roll": random.randint(2,3)}, 
+        2: {"chance": 0.25, "rewards": {"dog_better": 4, "uncommon_dog": 3, "fine_dog":1}, "num_items_to_roll": random.randint(1,2)}, 
+        3: {"chance": 0.15, "rewards": {"loyal_dog": 3, "divine_dog": 2, "dangerous_dog":1}, "num_items_to_roll": 1}, 
+        4: {"chance": 0.08, "rewards": {"angel_dog": 2, "golden_dog": 1, "spirit_dog":1}, "num_items_to_roll": 1}, 
+        5: {"chance": 0.02, "rewards": {"ancient_dog":1, "super_dog":1}, "num_items_to_roll": 1} 
+    }
+    
+    chosen_level = 1; roll = random.random(); cumulative_chance = 0
+    for level, data in sorted(loot_table.items()):
+        cumulative_chance += data["chance"]
+        if roll < cumulative_chance: chosen_level = level; break
+            
+    rewards_text = []; embed = discord.Embed(title="🎁 Dog Chest Opened! 🎁", description=f"You opened a Level {chosen_level} Chest and found:", color=discord.Color.orange())
+    
+    # Special high-tier dog roll separate from tier loot, e.g. Angel Dog
+    if "angel_dog" in DOG_TYPES and random.random() < 0.05: # 5% chance for an Angel Dog
+        user_inventory["angel_dog"] = user_inventory.get("angel_dog", 0) + 1
+        rewards_text.append(f"<:{DOG_TYPES['angel_dog'].get('emoji_name')}:{DOG_TYPES['angel_dog'].get('emoji_id')}> **{DOG_TYPES['angel_dog']['display_name']}** x1 (✨ Special Bonus!)")
+
+    # Regular loot from chosen level
+    level_reward_pool = loot_table[chosen_level]["rewards"]
+    num_items_from_tier = loot_table[chosen_level]["num_items_to_roll"]
+    
+    possible_rewards_keys = list(level_reward_pool.keys())
+    reward_weights = list(level_reward_pool.values())
+
+    for _ in range(num_items_from_tier):
+        if not possible_rewards_keys: break # No more items to pick from this tier
+        rewarded_dog_key = random.choices(possible_rewards_keys, weights=reward_weights, k=1)[0]
+        rewarded_amount = 1 # For simplicity, each "item roll" from tier gives 1
+        
+        user_inventory[rewarded_dog_key] = user_inventory.get(rewarded_dog_key, 0) + rewarded_amount
+        dog_info = DOG_TYPES.get(rewarded_dog_key)
+        if dog_info: 
+            e_name, e_id = dog_info.get("emoji_name"), dog_info.get("emoji_id"); 
+            emo = f"<:{e_name}:{e_id}>" if e_name and e_id else "❓"
+            rewards_text.append(f"{emo} **{dog_info['display_name']}** x{rewarded_amount}")
+            
+    if not rewards_text : # Fallback if absolutely nothing was added
+        qty = random.randint(1,2)
+        user_inventory["normal_dog"] = user_inventory.get("normal_dog", 0) + qty
+        rewards_text.append(f"<:{DOG_TYPES['normal_dog'].get('emoji_name')}:{DOG_TYPES['normal_dog'].get('emoji_id')}> **Normal Dog** x{qty} (Consolation Prize)")
+
+    embed.description += "\n" + "\n".join(rewards_text) if rewards_text else "\nUnfortunately, it was a bit sparse this time."
+    
+    save_guild_data(gid, guild_data, interaction.guild.name)
+    # After saving, check for achievements that might be triggered by new dogs
+    await check_achievements_and_chest(interaction, uid, gid, "chest_open", {}) 
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="changespawntimings", description="Admin: Set THIS server's min/max/post-catch spawn times (seconds).")
+# --- DOGSINO COMMAND ---
+@bot.tree.command(name="dogsino", description=f"Gamble {DOGSINO_ENTRY_COST_AMOUNT} {DOG_TYPES.get(DOGSINO_ENTRY_COST_UNCOMMON_DOG_TYPE, {}).get('display_name','Uncommon')} Dogs!")
+async def dogsino_play_slash(interaction: discord.Interaction):
+    if not interaction.guild: await interaction.response.send_message("Server only.",ephemeral=True); return
+    gid = str(interaction.guild.id); uid = str(interaction.user.id)
+    guild_data = load_guild_data(gid, interaction.guild.name); user_data = get_user_data_block(gid, uid, guild_data)
+    user_inventory = user_data["inventory"]
+    entry_dog_key = DOGSINO_ENTRY_COST_UNCOMMON_DOG_TYPE
+    entry_dog_display_name = DOG_TYPES.get(entry_dog_key, {}).get('display_name', 'Uncommon Dogs')
+    if user_inventory.get(entry_dog_key, 0) < DOGSINO_ENTRY_COST_AMOUNT:
+        await interaction.response.send_message(f"🎰 Need {DOGSINO_ENTRY_COST_AMOUNT} {entry_dog_display_name}! You have {user_inventory.get(entry_dog_key,0)}.", ephemeral=True); return
+    
+    user_inventory[entry_dog_key] -= DOGSINO_ENTRY_COST_AMOUNT
+    embed = discord.Embed(title="🎰 Dogsino Gamble! 🎰", description="Spinning the wheel of fortune...", color=discord.Color.random())
+    await interaction.response.send_message(embed=embed) # Send initial response
+    
+    await asyncio.sleep(random.uniform(1.5, 3.0)) # Suspense!
+
+    roll = random.random(); won_dog_key = None
+    
+    # Determine rarest dog that can actually spawn (has a spawn_weight > 0)
+    rarest_spawnable_dog = None; max_val = -1
+    spawnable_dogs_with_values = {k:DOG_TYPES[k]['value'] for k in DOG_SPAWN_KEYS_FOR_RANDOM if DOG_TYPES[k].get('value') is not None}
+    if spawnable_dogs_with_values:
+        rarest_spawnable_dog = max(spawnable_dogs_with_values, key=spawnable_dogs_with_values.get)
+
+    if roll < DOGSINO_RAREST_WIN_CHANCE and rarest_spawnable_dog: # Tiny chance for rarest
+        won_dog_key = rarest_spawnable_dog
+    else: # Consolation prizes - weighted more towards common/good
+        consolation_pool = {"normal_dog": 60, "dog_good": 30, "dog_better": 10} # Define weights
+        consolation_keys = list(consolation_pool.keys())
+        consolation_weights = list(consolation_pool.values())
+        if consolation_keys: # Ensure pool is not empty
+            won_dog_key = random.choices(consolation_keys, weights=consolation_weights, k=1)[0]
+        else: # Absolute fallback if pool is misconfigured
+            won_dog_key = "normal_dog" 
+
+    if won_dog_key and won_dog_key in DOG_TYPES:
+        user_inventory[won_dog_key] = user_inventory.get(won_dog_key, 0) + 1
+        di = DOG_TYPES[won_dog_key]; en, ei = di.get("emoji_name"), di.get("emoji_id")
+        emo = f"<:{en}:{ei}> " if en and ei else "❓"
+        
+        if won_dog_key == rarest_spawnable_dog:
+            embed.description = f"💰 **J A C K P O T ! ! !** 💰\nYou won a {emo}**{di['display_name']}**!!!"
+            embed.color = discord.Color.gold()
+        else:
+            embed.description = f"Better luck next time! The Dogsino gifts you a {emo}**{di['display_name']}**."
+            embed.color = discord.Color.light_grey()
+    else: # Should not happen if won_dog_key is always set from pool or fallback
+        embed.description = "The dice tumbled strangely... Nothing happened this time."
+        embed.color = discord.Color.dark_grey()
+
+    if save_guild_data(gid, guild_data, interaction.guild.name):
+        await interaction.edit_original_response(embed=embed)
+    else:
+        user_inventory[entry_dog_key] += DOGSINO_ENTRY_COST_AMOUNT # Revert cost if save fails
+        await interaction.edit_original_response(content="🎰 Dogsino error! Entry fee refunded.", embed=None)
+
+# --- SLASH COMMANDS ---
+# (inventory, achievements, leaderboard, catalogue, setup, all crafting, shield, steal, givedog, forcespawn, chest, dogsino)
+# The full definitions of previously working commands should be placed here.
+# I will include the newly added/modified ones: inventory, achievements, chest, dogsino, quests view.
+
+@bot.tree.command(name="inventory", description="Shows your collection and stats.")
+@app_commands.describe(user="The user whose inventory you want to see (optional, defaults to yourself).")
+async def inventory_slash(interaction:discord.Interaction,user:discord.Member=None):
+    target_user = user if user else interaction.user
+    if not interaction.guild:await interaction.response.send_message("Srv only.",ephemeral=True);return
+    await interaction.response.defer(ephemeral=False)
+    guild_data_loaded = load_guild_data(str(interaction.guild.id), interaction.guild.name)
+    user_data_block = get_user_data_block(str(interaction.guild.id), str(target_user.id), guild_data_loaded)
+    user_dog_inventory = user_data_block["inventory"]; user_arc_reactors = user_data_block.get("arc_reactors", {}); unlocked_ach_keys = user_data_block.get("unlocked_achievements", [])
+    shield_until = user_data_block.get("shield_active_until", 0); current_time = int(datetime.now(timezone.utc).timestamp())
+    is_empty_dogs = not user_dog_inventory or all(c==0 for c in user_dog_inventory.values())
+    is_empty_reactors = not user_arc_reactors or all(c==0 for c in user_arc_reactors.values())
+    if is_empty_dogs and is_empty_reactors and not unlocked_ach_keys : msg="Your profile is quite empty!" if target_user == interaction.user else f"{target_user.display_name}'s profile is quite empty."; await interaction.followup.send(msg); return
+    total_collection_value = 0; total_dog_count = 0
+    if not is_empty_dogs:
+        for dog_key, count in user_dog_inventory.items():
+            if dog_key in DOG_TYPES and count > 0: total_collection_value += DOG_TYPES[dog_key].get("value", 0) * count; total_dog_count += count
+    emb=discord.Embed(title=f"{target_user.display_name}", color=discord.Color.random())
+    if target_user.avatar: emb.set_thumbnail(url=target_user.avatar.url)
+    summary_lines = [f"🐕 Total Dogs: **{total_dog_count}** | Collection Value: **{total_collection_value}** ✨"]
+    if shield_until > current_time: summary_lines.append(f"🛡️ Shield: Active (expires {discord.utils.format_dt(datetime.fromtimestamp(shield_until, timezone.utc), style='R')})")
+    else: summary_lines.append(f"🛡️ Shield: Inactive")
+    summary_lines.append(f"🏆 Achievements: **{len(unlocked_ach_keys)}/{len(ACHIEVEMENTS)}**")
+    if user_data_block.get("chest_available", False): summary_lines.append("🎁 **Dog Chest Available!** Use `/chest open`")
+    emb.description = "\n".join(summary_lines)
+    if not is_empty_dogs:
+        s_inv=sorted([(k,v)for k,v in user_dog_inventory.items() if v>0 and k in DOG_TYPES],key=lambda i:DOG_TYPES[i[0]].get("value",0),reverse=False)
+        dog_field_value = ""
+        for dk,c in s_inv:
+            di=DOG_TYPES.get(dk);
+            if not di: continue
+            e_name,e_id=di.get("emoji_name"),di.get("emoji_id")
+            fn=f"<:{e_name}:{e_id}> "if e_name and e_id else"❓ ";fn+=f"**{di['display_name']}**: {c}"
+            dog_field_value += fn + "\n"
+        if dog_field_value: emb.add_field(name="--- Dog Collection ---", value=dog_field_value.strip(), inline=False)
+    if not is_empty_reactors:
+        reactor_field_value = "\n".join([f"{ARC_REACTOR_TYPES[rk].get('emoji','⚙️')} **{ARC_REACTOR_TYPES[rk]['display_name']}**: {count}" for rk, count in user_arc_reactors.items() if count > 0 and rk in ARC_REACTOR_TYPES])
+        if reactor_field_value: emb.add_field(name="--- Arc Reactors ---", value=reactor_field_value, inline=False)
+    if not emb.fields and (emb.description == "\n".join(summary_lines) and is_empty_dogs and is_empty_reactors) : emb.description += "\n\nNothing else to show." if emb.description else "Nothing to show."
+    await interaction.followup.send(embed=emb)
+@inventory_slash.error
+async def inventory_slash_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    print(f"Error in /inventory: {error}");
+    if hasattr(error, 'original'): import traceback; traceback.print_exception(type(error.original), error.original, error.original.__traceback__)
+    if not interaction.response.is_done(): await interaction.response.send_message("Error fetching inventory.", ephemeral=True)
+    else: await interaction.followup.send("Error fetching inventory.", ephemeral=True)
+
+@bot.tree.command(name="achievements", description="View unlocked achievements for a user.")
+@app_commands.describe(user="The user whose achievements you want to see (optional, defaults to yourself).")
+async def achievements_slash(interaction: discord.Interaction, user: discord.Member = None):
+    target_user = user if user else interaction.user
+    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
+    await interaction.response.defer(ephemeral=False) # Make public
+    guild_data = load_guild_data(str(interaction.guild.id), interaction.guild.name)
+    user_data = get_user_data_block(str(interaction.guild.id), str(target_user.id), guild_data)
+    unlocked_keys = user_data.get("unlocked_achievements", [])
+    embed = discord.Embed(title=f"🏆 {target_user.display_name}'s Achievements ({len(unlocked_keys)}/{len(ACHIEVEMENTS)})", color=discord.Color.gold())
+    if target_user.avatar: embed.set_thumbnail(url=target_user.avatar.url)
+    
+    description_lines = []
+    sorted_ach_keys = sorted(ACHIEVEMENT_KEYS) # Sort all achievement keys for consistent display order
+
+    for ach_key in sorted_ach_keys:
+        ach_info = ACHIEVEMENTS[ach_key]
+        if ach_key in unlocked_keys:
+            description_lines.append(f"{ach_info.get('emoji', '✅')} **{ach_info['name']}**: _{ach_info['description']}_")
+        else:
+            description_lines.append(f"🔒 **{ach_info['name']}**: _{ach_info['description']}_")
+            
+    if not description_lines: embed.description = "No achievements defined or found."
+    else: embed.description = "\n\n".join(description_lines)
+    
+    await interaction.followup.send(embed=embed)
+
+# --- LEADERBOARD COMMAND ---
+@bot.tree.command(name="leaderboard", description="Shows server leaderboards for dogs.")
+@app_commands.describe(category="The leaderboard category to display.")
+@app_commands.choices(category=[
+    app_commands.Choice(name="Richest (Total Dog Value)", value="value"),
+    app_commands.Choice(name="Most Dogs (Total Count)", value="count")
+])
+async def leaderboard_slash(interaction: discord.Interaction, category: str = "value"):
+    if not interaction.guild:
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=False)
+    guild_data = load_guild_data(str(interaction.guild.id), interaction.guild.name)
+    user_overall_data = guild_data.get("user_data", {})
+    if not user_overall_data:
+        await interaction.followup.send("No user data found for this server to generate a leaderboard.")
+        return
+    leaderboard_entries = []
+    for user_id_str, user_data_block in user_overall_data.items():
+        user_dog_inventory = user_data_block.get("inventory", {})
+        if not isinstance(user_dog_inventory, dict): continue
+        total_value = 0; total_dogs = 0
+        for dog_key, count in user_dog_inventory.items():
+            if dog_key in DOG_TYPES and count > 0:
+                total_value += DOG_TYPES[dog_key].get("value", 0) * count
+                total_dogs += count
+        if total_dogs > 0 or total_value > 0:
+            user_display_name_or_mention = f"User ID: {user_id_str}"
+            try:
+                member = interaction.guild.get_member(int(user_id_str))
+                if member: user_display_name_or_mention = member.mention
+            except ValueError: pass # Should not happen with Discord IDs
+            leaderboard_entries.append({"name_mention": user_display_name_or_mention, "total_value": total_value, "total_dogs": total_dogs})
+    if not leaderboard_entries:
+        await interaction.followup.send("No users with dogs/value found to create a leaderboard.")
+        return
+    if category == "value":
+        sorted_leaderboard = sorted(leaderboard_entries, key=lambda x: x["total_value"], reverse=True)
+        title = "💎 Richest Collectors (Total Dog Value)"; entry_format = lambda i, e: f"**{i+1}.** {e['name_mention']} - Value: {e['total_value']} ✨"
+    else: # category == "count"
+        sorted_leaderboard = sorted(leaderboard_entries, key=lambda x: x["total_dogs"], reverse=True)
+        title = "🏆 Top Dog Owners (Total Count)"; entry_format = lambda i, e: f"**{i+1}.** {e['name_mention']} - Dogs: {e['total_dogs']}"
+    embed = discord.Embed(title=title, color=discord.Color.gold())
+    description_lines = [entry_format(i, entry) for i, entry in enumerate(sorted_leaderboard[:15])]
+    if description_lines: embed.description = "\n".join(description_lines)
+    else: embed.description = "No one qualifies for this leaderboard yet!"
+    await interaction.followup.send(embed=embed)
+@leaderboard_slash.error
+async def leaderboard_slash_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    print(f"Error in /leaderboard: {error}");
+    if hasattr(error, 'original'): import traceback; traceback.print_exception(type(error.original), error.original, error.original.__traceback__)
+    if not interaction.response.is_done(): await interaction.response.send_message("Error fetching leaderboard.", ephemeral=True)
+    else: await interaction.followup.send("Error fetching leaderboard.", ephemeral=True)
+
+# --- CATALOGUE COMMAND ---
+@bot.tree.command(name="catalogue", description="Displays a catalogue of all dog types, their rarity, and server counts.")
+async def catalogue_slash(interaction: discord.Interaction):
+    if not interaction.guild: await interaction.response.send_message("This command can only be used in a server.", ephemeral=True); return
+    await interaction.response.defer(ephemeral=False)
+    guild_id_str = str(interaction.guild.id); guild_data = load_guild_data(guild_id_str, interaction.guild.name)
+    server_dog_counts = {dog_key: 0 for dog_key in DOG_TYPE_KEYS}
+    if "user_data" in guild_data and isinstance(guild_data["user_data"], dict):
+        for user_id, user_specific_data in guild_data["user_data"].items():
+            user_inventory = user_specific_data.get("inventory", {})
+            if isinstance(user_inventory, dict):
+                for dog_key, count in user_inventory.items():
+                    if dog_key in server_dog_counts: server_dog_counts[dog_key] += count
+    total_spawn_weight = sum(DOG_SPAWN_WEIGHTS_FOR_RANDOM); 
+    if total_spawn_weight == 0: total_spawn_weight = 1
+    embed = discord.Embed(title=f"🐾 Dog Catalogue for {interaction.guild.name}", description="Dog types, spawn chance, and server population.", color=discord.Color.purple())
+    display_dogs_info = []
+    for key in DOG_TYPE_KEYS:
+        props = DOG_TYPES.get(key, {}); spawn_weight = props.get("spawn_weight", 0); rarity_percent = 0.0
+        if key in DOG_SPAWN_KEYS_FOR_RANDOM and total_spawn_weight > 0: rarity_percent = (spawn_weight / total_spawn_weight) * 100
+        display_dogs_info.append({ "key": key, "name": props.get("display_name", key.replace("_", " ").title()), "emoji_name": props.get("emoji_name"), "emoji_id": props.get("emoji_id"), "server_count": server_dog_counts.get(key, 0), "rarity_percent": rarity_percent, "value": props.get("value", 0)})
+    sorted_display_dogs = sorted(display_dogs_info, key=lambda x: x["value"], reverse=False)
+    description_lines = []
+    for dog_info in sorted_display_dogs:
+        emoji_str = f"<:{dog_info['emoji_name']}:{dog_info['emoji_id']}> " if dog_info["emoji_name"] and dog_info["emoji_id"] else "❓ "
+        rarity_display = f"{dog_info['rarity_percent']:.4f}%"
+        if dog_info['rarity_percent'] == 0 and dog_info['key'] not in DOG_SPAWN_KEYS_FOR_RANDOM : rarity_display = "N/A (Non-Spawn)"
+        description_lines.append(f"{emoji_str}**{dog_info['name']}**\n   - In Server: {dog_info['server_count']}\n   - Spawn Chance: {rarity_display}")
+    if description_lines:
+        full_description = "\n\n".join(description_lines)
+        if len(full_description) > 4096: embed.description = full_description[:4000] + "\n... (list truncated)"
+        else: embed.description = full_description
+    else: embed.description = "No dog types found."
+    await interaction.followup.send(embed=embed)
+@catalogue_slash.error
+async def catalogue_slash_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    print(f"Error in /catalogue: {error}"); import traceback
+    if hasattr(error, 'original'): traceback.print_exception(type(error.original), error.original, error.original.__traceback__)
+    else: traceback.print_exception(type(error), error, error.__traceback__)
+    if not interaction.response.is_done(): await interaction.response.send_message("Error fetching catalogue.", ephemeral=True)
+    else: await interaction.followup.send("Error fetching catalogue.", ephemeral=True)
+
+# --- SETUP COMMANDS ---
+setup_group = app_commands.Group(name="setup", description="Configure bot settings for this server.")
+@setup_group.command(name="spawnchannel", description="Manage channels where dogs can spawn.")
+@app_commands.describe(action="'add' or 'remove' a channel, or 'clear' all. 'list' to view.", channel="The channel to add or remove (not needed for 'clear' or 'list').")
+@app_commands.choices(action=[app_commands.Choice(name="Add spawn channel", value="add"), app_commands.Choice(name="Remove spawn channel", value="remove"), app_commands.Choice(name="List spawn channels", value="list"), app_commands.Choice(name="Clear all (dogs won't spawn until one is added!)", value="clear")])
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_spawnchannel_slash(interaction: discord.Interaction, action: str, channel: discord.TextChannel = None):
+    if not interaction.guild: await interaction.response.send_message("Server only.",ephemeral=True); return
+    gid = str(interaction.guild.id); guild_data = load_guild_data(gid, interaction.guild.name)
+    settings = guild_data.setdefault("settings", {}); spawn_channels = settings.setdefault("spawn_channel_ids", [])
+    action_message = ""
+    if action == "add":
+        if not channel: await interaction.response.send_message("Please specify a channel to add.",ephemeral=True); return
+        if channel.id not in spawn_channels: spawn_channels.append(channel.id); action_message = f"✅ {channel.mention} added. Dogs can now spawn here."
+        else: action_message = f"ℹ️ {channel.mention} is already a spawn location."
+    elif action == "remove":
+        if not channel: await interaction.response.send_message("Please specify a channel to remove.",ephemeral=True); return
+        if channel.id in spawn_channels:
+            spawn_channels.remove(channel.id); action_message = f"➖ {channel.mention} removed."
+            if not spawn_channels: action_message += " No specific channels set; dogs will NOT spawn until one is added."
+        else: action_message = f"ℹ️ {channel.mention} was not in the list."
+    elif action == "clear":
+        if not spawn_channels: await interaction.response.send_message("ℹ️ No specific spawn channels were set. Dogs will NOT spawn until one is added.",ephemeral=True); return
+        spawn_channels.clear(); action_message = "✅ Spawn locations cleared. Dogs will NOT spawn until channels are added using `/setup spawnchannel add`."
+    elif action == "list":
+        if not spawn_channels: await interaction.response.send_message("No specific spawn channels set. Dogs will NOT spawn until one is added via `/setup spawnchannel add`.",ephemeral=True); return
+        channel_mentions = [f"<#{ch_id}>" for ch_id in spawn_channels if interaction.guild.get_channel(ch_id)]
+        await interaction.response.send_message(f"ℹ️ Current spawn channels: {', '.join(channel_mentions) if channel_mentions else 'None (or channels no longer exist)'}.",ephemeral=True); return
+    else: await interaction.response.send_message("Invalid action.",ephemeral=True); return
+    settings["spawn_channel_ids"] = spawn_channels
+    if save_guild_data(gid, guild_data, interaction.guild.name): await interaction.response.send_message(action_message)
+    else: await interaction.response.send_message("❌ Error saving settings.", ephemeral=True)
+@setup_spawnchannel_slash.error
+async def setup_spawnchannel_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions): await interaction.response.send_message("⛔ Admins only.", ephemeral=True)
+    else: await interaction.response.send_message(f"🤔 Err: {type(error).__name__}", ephemeral=True); print(f"Err /setup spawnchannel: {error}")
+bot.tree.add_command(setup_group) # Add the setup group to the tree
+
+# --- CRAFTING SYSTEM COMMANDS ---
+@bot.tree.command(name="togglecrafting", description="Admin: Enable or disable the crafting system for this server.")
+@app_commands.describe(enabled="True to enable, False to disable")
+@app_commands.checks.has_permissions(administrator=True)
+async def togglecrafting_slash(interaction: discord.Interaction, enabled: bool):
+    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
+    gd = load_guild_data(str(interaction.guild.id), interaction.guild.name);gd.setdefault("settings", {})["crafting_enabled"] = enabled
+    if save_guild_data(str(interaction.guild.id), gd, interaction.guild.name): await interaction.response.send_message(f"✅ Crafting system {('enabled' if enabled else 'disabled')}.")
+    else: await interaction.response.send_message("❌ Error updating crafting status.", ephemeral=True)
+
+@bot.tree.command(name="adddogrecipe", description="Admin: Add/update a dog crafting recipe (max 3 ingredients).")
+@app_commands.describe( recipe_key="Unique key (e.g., void_dog_craft).", output_dog_key="The dog this recipe produces.", display_name="Display name for /craftables.", ing1_type="Type of  1st ingredient.", ing1_amount="Amount of 1st.", ing2_type="2nd ingredient type (opt).", ing2_amount="Amount of 2nd (opt).", ing3_type="3rd ingredient type (opt).", ing3_amount="Amount of 3rd (opt).", emoji_name="Output dog emoji name (opt).", emoji_id="Output dog emoji ID (opt).")
+@app_commands.choices( output_dog_key=[app_commands.Choice(name=props["display_name"], value=key) for key, props in DOG_TYPES.items()], ing1_type=[app_commands.Choice(name=props["display_name"], value=key) for key, props in DOG_TYPES.items()], ing2_type=[app_commands.Choice(name=props["display_name"], value=key) for key, props in DOG_TYPES.items()], ing3_type=[app_commands.Choice(name=props["display_name"], value=key) for key, props in DOG_TYPES.items()])
+@app_commands.checks.has_permissions(administrator=True)
+async def add_dog_recipe_slash(interaction: discord.Interaction, recipe_key: str, output_dog_key: str, display_name: str, ing1_type: str, ing1_amount: app_commands.Range[int, 1, None], ing2_type: str = None, ing2_amount: app_commands.Range[int, 1, None] = None, ing3_type: str = None, ing3_amount: app_commands.Range[int, 1, None] = None, emoji_name: str = None, emoji_id: str = None):
+    if not interaction.guild: await interaction.response.send_message("Srv only.", ephemeral=True); return
+    ingredients = {};
+    if ing1_type and ing1_amount:
+        if ing1_type not in DOG_TYPES: await interaction.response.send_message(f"Inv ing1 type: {ing1_type}", ephemeral=True); return
+        ingredients[ing1_type] = ing1_amount
+    if ing2_type and ing2_amount:
+        if ing2_type not in DOG_TYPES: await interaction.response.send_message(f"Inv ing2 type: {ing2_type}", ephemeral=True); return
+        ingredients[ing2_type] = ing2_amount
+    elif (ing2_type and not ing2_amount) or (not ing2_type and ing2_amount): await interaction.response.send_message("Ing2 type/amount mismatch.", ephemeral=True); return
+    if ing3_type and ing3_amount:
+        if ing3_type not in DOG_TYPES: await interaction.response.send_message(f"Inv ing3 type: {ing3_type}", ephemeral=True); return
+        ingredients[ing3_type] = ing3_amount
+    elif (ing3_type and not ing3_amount) or (not ing3_type and ing3_amount): await interaction.response.send_message("Ing3 type/amount mismatch.", ephemeral=True); return
+    if not ingredients: await interaction.response.send_message("At least one ingredient needed.", ephemeral=True); return
+    if output_dog_key not in DOG_TYPES: await interaction.response.send_message(f"Output dog key '{output_dog_key}' invalid.", ephemeral=True); return
+    gd = load_guild_data(str(interaction.guild.id), interaction.guild.name); recipes_data = gd.setdefault("crafting_recipes", {}).setdefault("dogs", {})
+    clean_recipe_key = recipe_key.lower().replace(" ", "_").strip()
+    if not clean_recipe_key: await interaction.response.send_message("Recipe key empty.", ephemeral=True); return
+    if output_dog_key in DOG_TYPES and emoji_name and emoji_id: DOG_TYPES[output_dog_key]["emoji_name"] = emoji_name; DOG_TYPES[output_dog_key]["emoji_id"] = emoji_id
+    recipes_data[clean_recipe_key] = {"display_name": display_name, "output_dog_key": output_dog_key, "enabled": True, "ingredients": ingredients, "recipe_emoji_name": emoji_name if emoji_name else DOG_TYPES[output_dog_key].get("emoji_name"), "recipe_emoji_id": emoji_id if emoji_id else DOG_TYPES[output_dog_key].get("emoji_id")}
+    if save_guild_data(str(interaction.guild.id), gd, interaction.guild.name): await interaction.response.send_message(f"✅ Dog recipe '{clean_recipe_key}' for **{DOG_TYPES[output_dog_key]['display_name']}** saved.")
+    else: await interaction.response.send_message("❌ Err saving recipe.", ephemeral=True)
+
+@bot.tree.command(name="addreactorrecipe", description="Admin: Add/update an Arc Reactor recipe (max 3 dog ingredients).")
 @app_commands.describe(
-    min_seconds="Min seconds between normal spawns (e.g., 120)",
-    max_seconds="Max seconds between normal spawns (e.g., 300)",
-    post_catch_seconds="Seconds for a quick respawn after a catch (e.g., 30)"
+    recipe_key="Unique key (e.g., theft_booster).", 
+    output_reactor_key="The Arc Reactor this recipe produces.", 
+    display_name="Display name in /craftables.", 
+    ingredients="Dog ingredients as 'key:amount,key2:amount'. Max 3.", 
+    recipe_emoji="Emoji for this recipe in /craftables (optional, e.g., 💥)." # Changed from emoji_name/id
+)
+@app_commands.choices( # ONLY for output_reactor_key
+    output_reactor_key=[app_commands.Choice(name=props["display_name"], value=key) for key, props in ARC_REACTOR_TYPES.items()]
 )
 @app_commands.checks.has_permissions(administrator=True)
-async def change_spawn_timings_slash(interaction: discord.Interaction, min_seconds: int, max_seconds: int, post_catch_seconds: int):
+async def add_reactor_recipe_slash(
+    interaction: discord.Interaction, 
+    recipe_key: str, 
+    output_reactor_key: str, 
+    display_name: str, 
+    ingredients: str, # Ingredients are parsed from this string
+    recipe_emoji: str = None # Changed from emoji_name/id to a single emoji string
+):
+    # ... rest of the function logic (ensure it uses 'recipe_display_emoji' to save if that's your schema)
     if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
-
-    if not (10 <= min_seconds < max_seconds <= 7200): # Min 10s, Max 2hrs, min < max
-        await interaction.response.send_message("Invalid normal timings. Min:10-7199s, Max:(Min+1)-7200s.", ephemeral=True); return
-    if not (5 <= post_catch_seconds <= 600): # Post catch 5s to 10min
-        await interaction.response.send_message("Invalid post-catch timing. Must be between 5 and 600 seconds.", ephemeral=True); return
-
-    guild_id_str = str(interaction.guild.id)
-    guild_data = load_guild_data(guild_id_str, interaction.guild.name)
+    parsed_ingredients = parse_ingredients(ingredients) # parse_ingredients should only expect dog keys
+    if parsed_ingredients is None: 
+        await interaction.response.send_message("Invalid ingredients. Use valid dog keys: 'key1:amt1,key2:amt2'.", ephemeral=True); return
+    if output_reactor_key not in ARC_REACTOR_TYPES: 
+        await interaction.response.send_message(f"Output reactor key '{output_reactor_key}' invalid.", ephemeral=True); return
     
-    guild_data["settings"]["min_spawn_seconds"] = min_seconds
-    guild_data["settings"]["max_spawn_seconds"] = max_seconds
-    guild_data["settings"]["post_catch_spawn_seconds"] = post_catch_seconds
+    gd = load_guild_data(str(interaction.guild.id), interaction.guild.name)
+    recipes = gd.setdefault("crafting_recipes", {}).setdefault("arc_reactors", {})
+    clean_recipe_key = recipe_key.lower().replace(" ", "_").strip()
+    if not clean_recipe_key: 
+        await interaction.response.send_message("Recipe key cannot be empty.", ephemeral=True); return
+
+    # Store the provided emoji string for this specific recipe display
+    recipes[clean_recipe_key] = {
+        "display_name": display_name, 
+        "output_reactor_key": output_reactor_key, 
+        "enabled": True, 
+        "ingredients": parsed_ingredients, 
+        "recipe_display_emoji": recipe_emoji if recipe_emoji else ARC_REACTOR_TYPES[output_reactor_key].get("emoji", "⚙️") 
+    }
+    if save_guild_data(str(interaction.guild.id), gd, interaction.guild.name):
+        await interaction.response.send_message(f"✅ Arc Reactor recipe '{clean_recipe_key}' for **{ARC_REACTOR_TYPES[output_reactor_key]['display_name']}** saved.")
+    else: 
+        await interaction.response.send_message("❌ Error saving reactor recipe.", ephemeral=True)
+
+@bot.tree.command(name="craftables", description="View available crafting recipes.")
+@app_commands.describe(category="Which category of craftables to view.")
+@app_commands.choices(category=[app_commands.Choice(name="All Dogs", value="dogs"), app_commands.Choice(name="All Arc Reactors", value="arc_reactors"), app_commands.Choice(name="All Items", value="all")])
+async def craftables_slash(interaction: discord.Interaction, category: str = "all"):
+    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
+    gd = load_guild_data(str(interaction.guild.id), interaction.guild.name)
+    if not gd.get("settings", {}).get("crafting_enabled", False): await interaction.response.send_message("🛠️ Crafting disabled.", ephemeral=True); return
+    all_recipes = gd.get("crafting_recipes", {}); emb = discord.Embed(title="Crafting Recipes", color=discord.Color.gold()); found = False
+    cats_to_show = ["dogs", "arc_reactors"] if category == "all" else ([category] if category in ["dogs", "arc_reactors"] else [])
+    for cat_key in cats_to_show:
+        cat_name = "Dog Recipes" if cat_key == "dogs" else ("Arc Reactor Recipes" if cat_key == "arc_reactors" else "Other Recipes")
+        recipes_in_cat = all_recipes.get(cat_key, {}); cat_txt = []
+        for rk, rd in recipes_in_cat.items():
+            if rd.get("enabled", False):
+                output_dn = rd.get("display_name", rk); final_emoji_str = "❓ "
+                if cat_key == "dogs":
+                    odk = rd.get("output_dog_key")
+                    if odk and odk in DOG_TYPES: output_dn = DOG_TYPES[odk]["display_name"]
+                    ren, rei = rd.get("recipe_emoji_name"), rd.get("recipe_emoji_id"); den, dei = DOG_TYPES.get(odk,{}).get("emoji_name"), DOG_TYPES.get(odk,{}).get("emoji_id")
+                    en_use, ei_use = (ren if ren else den), (rei if rei else dei)
+                    if en_use and ei_use: final_emoji_str = f"<:{en_use}:{ei_use}> "
+                elif cat_key == "arc_reactors":
+                    ork = rd.get("output_reactor_key")
+                    if ork and ork in ARC_REACTOR_TYPES: output_dn = ARC_REACTOR_TYPES[ork]["display_name"]
+                    recipe_display_emo = rd.get("recipe_display_emoji")
+                    if recipe_display_emo: final_emoji_str = recipe_display_emo + " "
+                    elif ork and ork in ARC_REACTOR_TYPES: final_emoji_str = ARC_REACTOR_TYPES[ork].get("emoji", "⚙️") + " "
+                    else: final_emoji_str = "⚙️ "
+                ings = ", ".join([f"{DOG_TYPES.get(ik,{}).get('display_name',ik)} x{amt}" for ik,amt in rd.get("ingredients",{}).items()]) or "None"
+                cat_txt.append(f"**{final_emoji_str}{output_dn}** (`/craft {rk}`)\nIngredients: _{ings}_")
+        if cat_txt: emb.add_field(name=f"--- {cat_name} ---", value="\n\n".join(cat_txt), inline=False); found = True
+    if not found: emb.description = "No craftables available/enabled."
+    await interaction.response.send_message(embed=emb, ephemeral=True)
+
+@bot.tree.command(name="craft", description="Craft an item from a recipe.")
+@app_commands.describe(recipe_key="The unique key of the recipe to craft (see /craftables).")
+async def craft_slash(interaction: discord.Interaction, recipe_key: str):
+    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
+    gid = str(interaction.guild.id); uid_s = str(interaction.user.id); gd = load_guild_data(gid, interaction.guild.name)
+    if not gd.get("settings", {}).get("crafting_enabled", False): await interaction.response.send_message("🛠️ Crafting disabled.", ephemeral=True); return
+    rclean = recipe_key.lower().replace(" ", "_"); rd = None; rcat = None
+    for cat, recipes_in_cat in gd.get("crafting_recipes", {}).items():
+        if rclean in recipes_in_cat:
+            if recipes_in_cat[rclean].get("enabled", False): rd = recipes_in_cat[rclean]; rcat = cat; break
+            else: await interaction.response.send_message(f"Recipe '{recipe_key}' disabled.", ephemeral=True); return
+    if not rd: await interaction.response.send_message(f"Recipe '{recipe_key}' not found/enabled.", ephemeral=True); return
+    user_data = get_user_data_block(gid, uid_s, gd); user_dog_inv = user_data["inventory"]; user_arc_reactors = user_data.setdefault("arc_reactors", {k:0 for k in ARC_REACTOR_TYPE_KEYS})
+    can_craft = True; missing = []
+    for ik, req_amt in rd.get("ingredients", {}).items():
+        if ik in DOG_TYPES:
+            cur_amt = user_dog_inv.get(ik, 0)
+            if cur_amt < req_amt: can_craft = False; missing.append(f"{DOG_TYPES[ik]['display_name']} (Need:{req_amt}, Have:{cur_amt})")
+        else: can_craft = False; missing.append(f"Unknown ingredient: {ik}")
+    if not can_craft: await interaction.response.send_message(f"Can't craft **{rd['display_name']}**. Missing:\n- "+"\n- ".join(missing), ephemeral=True); return
+    for ik, req_amt in rd.get("ingredients", {}).items():
+        if ik in DOG_TYPES: user_dog_inv[ik] -= req_amt
+    out_dn = rd['display_name']; out_emo = ""
+    if rcat == "dogs":
+        out_dk = rd["output_dog_key"]; user_dog_inv[out_dk] = user_dog_inv.get(out_dk, 0) + 1
+        if out_dk in DOG_TYPES:
+            di = DOG_TYPES[out_dk]; out_dn = di["display_name"]
+            en,ei = rd.get("recipe_emoji_name", di.get("emoji_name")), rd.get("recipe_emoji_id", di.get("emoji_id"))
+            out_emo = f"<:{en}:{ei}> " if en and ei else "❓ "
+    elif rcat == "arc_reactors":
+        out_rk = rd["output_reactor_key"]; user_arc_reactors[out_rk] = user_arc_reactors.get(out_rk, 0) + 1
+        if out_rk in ARC_REACTOR_TYPES:
+            di = ARC_REACTOR_TYPES[out_rk]; out_dn = di["display_name"]
+            recipe_emo_str = rd.get("recipe_display_emoji")
+            out_emo = (recipe_emo_str + " ") if recipe_emo_str else (di.get("emoji", "⚙️") + " ")
+        else: out_emo = rd.get("recipe_display_emoji", "⚙️") + " "
     
-    # Optional: If not in post-catch cooldown, immediately set next spawn for this guild
-    current_timestamp = int(datetime.now(timezone.utc).timestamp())
-    if not guild_data["spawn_state"]["is_in_post_catch_cooldown"]:
-        next_delay = random.randint(min_seconds, max_seconds)
-        guild_data["spawn_state"]["next_eligible_spawn_timestamp"] = current_timestamp + next_delay
-        print(f"[{datetime.now()}] Timings changed for '{interaction.guild.name}'. Next normal spawn in {next_delay}s.")
+    save_guild_data(gid, gd, interaction.guild.name) # Save before achievement check
+    await check_achievements_and_chest(interaction, uid_s, gid, "craft", {"item_key": out_dk if rcat == "dogs" else out_rk, "category": rcat})
+    await interaction.response.send_message(f"🎉 Crafted {out_emo}**{out_dn}**!")
+
+
+@bot.tree.command(name="usearc", description="Activate an Arc Reactor from your inventory.")
+@app_commands.describe(reactor_key="The Arc Reactor you want to use.")
+@app_commands.choices(reactor_key=[app_commands.Choice(name=props["display_name"], value=key) for key, props in ARC_REACTOR_TYPES.items()])
+async def use_arc_reactor_slash(interaction: discord.Interaction, reactor_key: str):
+    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
+    gid = str(interaction.guild.id); uid = str(interaction.user.id); guild_data = load_guild_data(gid, interaction.guild.name)
+    user_data = get_user_data_block(guild_id=gid, uid=uid, guild_data_ref=guild_data); user_reactors = user_data.setdefault("arc_reactors", {k:0 for k in ARC_REACTOR_TYPE_KEYS})
+    if reactor_key not in ARC_REACTOR_TYPES: await interaction.response.send_message("Invalid Arc Reactor type.", ephemeral=True); return
+    if user_reactors.get(reactor_key, 0) <= 0: await interaction.response.send_message(f"You don't have any **{ARC_REACTOR_TYPES[reactor_key]['display_name']}**.", ephemeral=True); return
+    reactor_info = ARC_REACTOR_TYPES[reactor_key]; effect_type = reactor_info.get("effect_type"); duration = reactor_info.get("duration_seconds", 0); current_time = int(datetime.now(timezone.utc).timestamp()); active_effects = user_data.setdefault("active_effects", {})
+    user_reactors[reactor_key] -= 1; activation_message = f"{reactor_info.get('emoji','💥')} Activated **{reactor_info['display_name']}**!"
+    if effect_type == "double_catch": expiry_time = current_time + duration; active_effects["double_catch_until"] = expiry_time; activation_message += f" Double catches for {format_time_delta(duration)} (until {discord.utils.format_dt(datetime.fromtimestamp(expiry_time, timezone.utc), style='R')})."
+    elif effect_type == "theft_boost": expiry_time = current_time + duration; active_effects["theft_boost_until"] = expiry_time; active_effects["theft_boost_value"] = 0.15; activation_message += f" Theft chance boosted by 15% for {format_time_delta(duration)} (until {discord.utils.format_dt(datetime.fromtimestamp(expiry_time, timezone.utc), style='R')})."
+    elif effect_type == "shield_bypass_on_steal": active_effects["next_steal_bypass_attempt"] = True; activation_message = f"🛡️💨 **{reactor_info['display_name']}** charged! Next `/steal` attempts shield bypass."
+    else: activation_message = f"Hmm, **{reactor_info['display_name']}** used, effect TBD."
+    if save_guild_data(gid, guild_data, interaction.guild.name): await interaction.response.send_message(activation_message)
+    else: user_reactors[reactor_key] += 1; await interaction.response.send_message("❌ Error activating Arc Reactor.", ephemeral=True)
+
+# --- SHIELD COMMANDS ---
+shield_group = app_commands.Group(name="shield", description="Manage your dog protection shield.")
+@shield_group.command(name="buy", description=f"Buy a shield for {SHIELD_DURATION_HOURS} hours (Costs: {SHIELD_COST_NORMAL_DOGS} Normal Dogs).")
+async def shield_buy_slash(interaction: discord.Interaction):
+    if not interaction.guild: await interaction.response.send_message("Server only.",ephemeral=True); return
+    gid = str(interaction.guild.id); uid = str(interaction.user.id); guild_data = load_guild_data(gid, interaction.guild.name); user_data = get_user_data_block(gid, uid, guild_data)
+    user_inventory = user_data["inventory"]; current_time = int(datetime.now(timezone.utc).timestamp())
+    if user_data.get("shield_active_until", 0) > current_time: await interaction.response.send_message(f"🛡️ Already active! Expires in {format_time_delta(user_data['shield_active_until'] - current_time)}.", ephemeral=True); return
+    if user_inventory.get("normal_dog", 0) < SHIELD_COST_NORMAL_DOGS: await interaction.response.send_message(f"Need {SHIELD_COST_NORMAL_DOGS} Normal Dogs (Have {user_inventory.get('normal_dog',0)}).", ephemeral=True); return
+    user_inventory["normal_dog"] -= SHIELD_COST_NORMAL_DOGS; user_data["shield_active_until"] = current_time + (SHIELD_DURATION_HOURS * 3600)
+    if save_guild_data(gid, guild_data, interaction.guild.name): await interaction.response.send_message(f"🛡️ Shield purchased for {SHIELD_DURATION_HOURS} hours (until {discord.utils.format_dt(datetime.fromtimestamp(user_data['shield_active_until'], timezone.utc), style='F')}).")
+    else: user_inventory["normal_dog"] += SHIELD_COST_NORMAL_DOGS; await interaction.response.send_message("❌ Error buying shield.", ephemeral=True)
+@shield_group.command(name="status", description="Check your current shield status.")
+async def shield_status_slash(interaction: discord.Interaction):
+    if not interaction.guild: await interaction.response.send_message("Server only.",ephemeral=True); return
+    gid = str(interaction.guild.id); uid = str(interaction.user.id); guild_data = load_guild_data(gid, interaction.guild.name); user_data = get_user_data_block(gid, uid, guild_data) 
+    shield_until = user_data.get("shield_active_until", 0); current_time = int(datetime.now(timezone.utc).timestamp())
+    if shield_until > current_time: await interaction.response.send_message(f"🛡️ Shield **ACTIVE**, expires in {format_time_delta(shield_until - current_time)} ({discord.utils.format_dt(datetime.fromtimestamp(shield_until, timezone.utc), style='R')}).", ephemeral=True)
+    else: await interaction.response.send_message("🛡️ Shield **INACTIVE**.", ephemeral=True)
+bot.tree.add_command(shield_group)
+
+# --- STEAL COMMAND ---
+@bot.tree.command(name="steal", description="Attempt to steal a dog from another user.")
+@app_commands.describe(target="The user you want to attempt to steal from.")
+async def steal_slash(interaction: discord.Interaction, target: discord.Member):
+    if not interaction.guild: await interaction.response.send_message("Server only.",ephemeral=True); return
+    if target == interaction.user: await interaction.response.send_message("Can't steal from yourself!", ephemeral=True); return
+    if target.bot: await interaction.response.send_message("Can't steal from bots!", ephemeral=True); return
+    gid = str(interaction.guild.id); thief_id = str(interaction.user.id); victim_id = str(target.id); current_time = int(datetime.now(timezone.utc).timestamp())
+    guild_data = load_guild_data(gid, interaction.guild.name); thief_data = get_user_data_block(gid, thief_id, guild_data); victim_data = get_user_data_block(gid, victim_id, guild_data)
+    if thief_data.get("spawn_catch_banned_until", 0) > current_time: await interaction.response.send_message(f"🚓 Banned until {discord.utils.format_dt(datetime.fromtimestamp(thief_data['spawn_catch_banned_until'], timezone.utc), style='R')}.",ephemeral=True); return
+    victim_shield_active = victim_data.get("shield_active_until", 0) > current_time; shield_bypassed_this_attempt = False
+    thief_active_effects = thief_data.setdefault("active_effects", {})
+    if victim_shield_active:
+        if thief_active_effects.get("next_steal_bypass_attempt", False):
+            thief_active_effects["next_steal_bypass_attempt"] = False # Consume charge
+            if random.random() < SHIELD_BYPASS_CHANCE_WITH_REACTOR: shield_bypassed_this_attempt = True
+        if not shield_bypassed_this_attempt: await interaction.response.send_message(f"🛡️ {target.display_name} shield blocked theft!", ephemeral=True); save_guild_data(gid, guild_data, interaction.guild.name); return
+    actual_theft_chance = THEFT_SUCCESS_CHANCE; theft_boost_info = ""
+    if thief_active_effects.get("theft_boost_until", 0) > current_time:
+        boost_val = thief_active_effects.get("theft_boost")
+        if boost_val: actual_theft_chance += boost_val
+        theft_boost_info = f" (Boosted by Reactor!)"
+    steal_roll = random.random()
+    if steal_roll < actual_theft_chance:
+        # Successful steal
+        stolen_dog_key = random.choices(DOG_SPAWN_KEYS_FOR_RANDOM, weights=DOG_SPAWN_WEIGHTS_FOR_RANDOM, k=1)[0]
+        thief_data["inventory"][stolen_dog_key] = thief_data["inventory"].get(stolen_dog_key, 0) + 1
+        await interaction.response.send_message(f"🦴 Stole a {DOG_TYPES[stolen_dog_key]['display_name']} from {target.display_name}!{theft_boost_info}")
     else:
-        print(f"[{datetime.now()}] Timings changed for '{interaction.guild.name}'. Currently in post-catch cooldown, new normal timings will apply after.")
+        # Failed steal
+        thief_data["theft_fail_streak"] = thief_data.get("theft_fail_streak", 0) + 1
+        if thief_data["theft_fail_streak"] >= MAX_THEFT_FAIL_STREAK_FOR_WANTED:
+            thief_data["wanted_level"] = True
+            thief_data["spawn_catch_banned_until"] = current_time + (SPAWN_CATCH_BAN_HOURS_ON_WANTED_FAIL * 3600)
+            await interaction.response.send_message(f"🚨 {interaction.user.mention} is now WANTED for theft! Banned from spawning/catching for {SPAWN_CATCH_BAN_HOURS_ON_WANTED_FAIL} hours.")
+        else:
+            await interaction.response.send_message(f"🔫 Failed to steal from {target.display_name}. Attempted theft #{thief_data['theft_fail_streak']}")
+    save_guild_data(gid, guild_data, interaction.guild.name)
 
+# --- ADMIN COMMANDS ---
+@bot.tree.command(name="givedog", description="Give a dog to a user.")
+@app_commands.describe(user="The user to give the dog to.", dog_type="The type of dog to give.", amount="The amount of dogs to give.")
+@app_commands.choices(dog_type=[app_commands.Choice(name=props["display_name"], value=key) for key, props in DOG_TYPES.items()])
+@app_commands.checks.has_permissions(administrator=True)
+async def givedog_slash(interaction: discord.Interaction, user: discord.Member, dog_type: str, amount: app_commands.Range[int, 1, None] = 1):
+    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
+    gid = str(interaction.guild.id); uid = str(user.id); amount = int(amount)
+    guild_data = load_guild_data(gid, interaction.guild.name); target_data = get_user_data_block(gid, uid, guild_data)
+    if dog_type in DOG_TYPES:
+        target_data["inventory"][dog_type] = target_data["inventory"].get(dog_type, 0) + amount
+        if save_guild_data(gid, guild_data, interaction.guild.name): await interaction.response.send_message(f"✅ Gave {amount}x **{DOG_TYPES[dog_type]['display_name']}** to {user.display_name}.")
+        else: await interaction.response.send_message("❌ Error giving dog.", ephemeral=True)
+    else: await interaction.response.send_message("Invalid dog type.", ephemeral=True)
 
-    if save_guild_data(guild_id_str, guild_data, interaction.guild.name):
-        await interaction.response.send_message(f"✅ Spawn timings for '{interaction.guild.name}' updated:\n"
-                                               f"Normal: {min_seconds}s - {max_seconds}s\n"
-                                               f"Post-Catch: {post_catch_seconds}s.")
+@bot.tree.command(name="forcespawn", description="Force spawn a dog in a specific channel.")
+@app_commands.describe(channel="The channel to spawn the dog in.", dog_type="The type of dog to spawn.")
+@app_commands.choices(dog_type=[app_commands.Choice(name=props["display_name"], value=key) for key, props in DOG_TYPES.items()])
+@app_commands.checks.has_permissions(administrator=True)
+async def forcespawn_slash(interaction: discord.Interaction, channel: discord.TextChannel, dog_type: str):
+    if not interaction.guild: await interaction.response.send_message("Server only.", ephemeral=True); return
+    gid = str(interaction.guild.id); current_time = int(datetime.now(timezone.utc).timestamp())
+    guild_data = load_guild_data(gid, interaction.guild.name); ss = guild_data["spawn_state"]
+    if ss.get("next_eligible_spawn_timestamp", 0) > current_time: await interaction.response.send_message("Spawn on cooldown. Try again later.", ephemeral=True); return
+    if dog_type in DOG_TYPES:
+        di = DOG_TYPES[dog_type]; ip = DOG_IMAGE_PATH_TEMPLATE.format(image_name=di["image_name"])
+        mtxt = f"A wild **{di['display_name']}** has appeared! Type `dog` to catch it!"
+        try:
+            s_msg = await channel.send(mtxt, file=discord.File(ip) if os.path.exists(ip) else None)
+            if not os.path.exists(ip):
+                logger.warning(f"IMG MISSING: {ip} for {dog_type}")
+            s_time = int(datetime.now(timezone.utc).timestamp())
+            active_dog_spawns[channel.id] = {"dog_type_key": dog_type, "guild_id": interaction.guild.id, "message_id": s_msg.id, "spawn_timestamp": s_time}
+            ss["next_eligible_spawn_timestamp"] = s_time + random.randint(DEFAULT_MIN_SPAWN_SECONDS, DEFAULT_MAX_SPAWN_SECONDS)
+            ss["is_in_post_catch_cooldown"] = False
+            save_guild_data(gid, guild_data, interaction.guild.name)
+            await interaction.response.send_message(f"✅ Spawned **{di['display_name']}** in {channel.mention}.")
+        except Exception as e:
+            logger.error(f"Err force spawn in {interaction.guild.name}: {e}")
+            await interaction.response.send_message("Error forcing spawn.", ephemeral=True)
     else:
-        await interaction.response.send_message("❌ Error saving new spawn timings.", ephemeral=True)
+        await interaction.response.send_message("Invalid dog type.", ephemeral=True)
 
-@change_spawn_timings_slash.error # Same error handler
-async def change_spawn_timings_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions): await interaction.response.send_message("⛔ Admins only.", ephemeral=True)
-    else: await interaction.response.send_message(f"🤔 Error: {type(error).__name__}", ephemeral=True); print(f"Err: {error}")
-
-# --- MAIN RUN ---
+# --- MAIN ENTRY POINT ---
 if __name__ == "__main__":
-    if BOT_TOKEN == "YOUR_SUPER_SECRET_BOT_TOKEN_HERE": print("ERROR: Set BOT_TOKEN.")
-    else:
-        try: bot.run(BOT_TOKEN)
-        except Exception as e: print(f"[{datetime.now()}] Bot run error: {e}"); import traceback; traceback.print_exc()
+    import sys
+    import asyncio
+    try:
+        # Start the bot only if this script is run directly
+        logger.info("Starting bot via __main__ entry point.")
+        # You may need to load the token from your config or environment
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(os.path.dirname(__file__), "secret.env"))
+        TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+        if not TOKEN:
+            logger.error("DISCORD_BOT_TOKEN not found in environment or secret.env!")
+            sys.exit(1)
+        bot.run(TOKEN)
+    except Exception as e:
+        logger.error(f"Fatal error in __main__: {e}")
+        pass
