@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger('dogbot')
 
-loaded = dotenv.load_dotenv(r'C:\Users\Aarav Maloo\Desktop\dog bot\src\secret.env')
+dotenv.load_dotenv() # Load env vars from .env if present
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 intents = discord.Intents.default(); intents.message_content = True; intents.guilds = True
