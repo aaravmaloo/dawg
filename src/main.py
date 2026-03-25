@@ -92,6 +92,99 @@ QUEST_DEFINITIONS = {
     "craft_item_1": {"id": "craft_item_1", "title": "Budding Crafter", "description": "Craft any 1 item (dog or reactor).", "objective_type": "craft_any", "target_count": 1, "reward_type": "arc_reactors", "reward_item_key": "charm_of_thieves_luck", "reward_amount": 1, "xp_reward": 60}
 }
 
+def _compute_total_dog_value(user_inventory: dict) -> int:
+    """Sum the collection value based on current inventory counts."""
+    return sum(
+        DOG_TYPES.get(dk, {}).get("value", 0) * dc
+        for dk, dc in user_inventory.items()
+        if dk in DOG_TYPES
+    )
+
+def _compute_initial_progress_for_quest(user_data: dict, quest_def: dict) -> int:
+    """
+    Best-effort initial progress so users see quests working immediately.
+    Note: we only have inventory counts in the save format, so "catch" progress is proxied.
+    """
+    objective_type = quest_def.get("objective_type")
+    inv = user_data.get("inventory", {})
+
+    # Important: don't treat inventory as "caught" progress for catch quests.
+    # Otherwise players can craft/convet dogs to satisfy "catch" quests without ever catching.
+    if objective_type == "total_value":
+        # "Total collection value" is inherently based on inventory, so it can be inferred.
+        return int(_compute_total_dog_value(inv))
+
+    # For all other objective types, start at 0 and rely on event-driven progress:
+    # - catch_specific/catch_any/catch_variety/catch_value_gte: increment only on real catch events
+    # - craft_any: increment only on real craft events
+    return 0
+
+    # unreachable
+
+def _award_reward_for_quest(user_data: dict, quest_def: dict) -> None:
+    reward_type = quest_def.get("reward_type")
+    reward_item_key = quest_def.get("reward_item_key")
+    reward_amount = int(quest_def.get("reward_amount", 1))
+    if reward_amount <= 0:
+        return
+
+    if reward_type == "dogs" and reward_item_key in DOG_TYPES:
+        inv_to_upd = user_data.setdefault("inventory", {k: 0 for k in DOG_TYPE_KEYS})
+        inv_to_upd[reward_item_key] = inv_to_upd.get(reward_item_key, 0) + reward_amount
+    elif reward_type == "arc_reactors" and reward_item_key in ARC_REACTOR_TYPES:
+        reac_to_upd = user_data.setdefault("arc_reactors", {k: 0 for k in ARC_REACTOR_TYPE_KEYS})
+        reac_to_upd[reward_item_key] = reac_to_upd.get(reward_item_key, 0) + reward_amount
+
+def assign_active_quests_if_needed(user_data: dict) -> bool:
+    """
+    Ensure the user has up to MAX_ACTIVE_QUESTS.
+    Returns True if anything changed (assigned or completed instantly).
+    """
+    changed = False
+
+    active_quests = user_data.setdefault("active_quests", {})
+    completed_this_cycle = user_data.setdefault("completed_quests_this_cycle", [])
+    completed_set = set(completed_this_cycle)
+
+    # Assign new quests if missing.
+    if len(active_quests) < MAX_ACTIVE_QUESTS:
+        available = [
+            qid for qid in QUEST_DEFINITIONS.keys()
+            if qid not in completed_set and qid not in active_quests
+        ]
+        random.shuffle(available)
+        while available and len(active_quests) < MAX_ACTIVE_QUESTS:
+            quest_id = available.pop()
+            quest_def = QUEST_DEFINITIONS.get(quest_id)
+            if not quest_def:
+                continue
+            active_quests[quest_id] = {
+                "progress": _compute_initial_progress_for_quest(user_data, quest_def)
+            }
+            changed = True
+
+    # Auto-complete quests that are already met (based on the initial progress proxy).
+    quests_to_remove = []
+    for quest_id, prog_data in list(active_quests.items()):
+        if quest_id in completed_set:
+            continue
+        quest_def = QUEST_DEFINITIONS.get(quest_id)
+        if not quest_def:
+            continue
+        target = int(quest_def.get("target_count", quest_def.get("target", 1)))
+        progress = int(prog_data.get("progress", 0))
+        if progress >= target:
+            completed_this_cycle.append(quest_id)
+            _award_reward_for_quest(user_data, quest_def)
+            quests_to_remove.append(quest_id)
+            user_data.setdefault("completed_quests_lifetime", []).append(quest_id)
+            changed = True
+
+    for qid in quests_to_remove:
+        active_quests.pop(qid, None)
+
+    return changed
+
 @bot.event
 async def on_message(msg:discord.Message):
     if msg.author==bot.user or not msg.guild or not msg.content:
@@ -267,6 +360,13 @@ async def update_quest_progress(source_event, user_id: str, guild_id: str, event
     user_data = get_user_data_block(guild_id, user_id, guild_data)
     active_quests = user_data.setdefault("active_quests", {})
     completed_this_cycle = user_data.setdefault("completed_quests_this_cycle", [])
+
+    # Assign quests on-demand (users may never open /quests).
+    if guild_data.get("settings", {}).get("quests_enabled", True) and not active_quests:
+        if assign_active_quests_if_needed(user_data):
+            save_guild_data(guild_id, guild_data)
+            active_quests = user_data.get("active_quests", {})
+
     quests_to_remove_from_active = []
     newly_completed_titles_for_chat = []
     guild_modified_by_progress = False
@@ -359,15 +459,6 @@ async def update_quest_progress(source_event, user_id: str, guild_id: str, event
             except Exception as e_chat_notify:
                 logger.error(f"Error sending quest completion chat notification: {e_chat_notify}")
     await check_achievements_and_chest(source_event, user_id, guild_id, "quest_progress_update", {})
-
-# --- QUEST DEFINITIONS (Example) ---
-QUEST_DEFINITIONS = {
-    "catch_normals_basic": {"id": "catch_normals_basic", "title": "Normal Dog Roundup", "description": "Catch 3 Normal Dogs.", "objective_type": "catch_specific", "dog_type_key": "normal_dog", "target_count": 3, "reward_type": "dogs", "reward_item_key": "dog_good", "reward_amount": 1},
-    "catch_any_starter": {"id": "catch_any_starter", "title": "First Steps", "description": "Catch any 2 dogs.", "objective_type": "catch_any", "target_count": 2, "reward_type": "dogs", "reward_item_key": "uncommon_dog", "reward_amount": 1},
-    "craft_something_simple": {"id": "craft_something_simple", "title": "Tinkerer", "description": "Craft any 1 item.", "objective_type": "craft_any", "target_count": 1, "reward_type": "arc_reactors", "reward_item_key": "charm_of_thieves_luck", "reward_amount": 1}, # Assuming charm_of_thieves_luck is a reactor key
-    "value_hunter": {"id": "value_hunter", "title": "Value Hunter", "description": "Catch a dog worth at least 500 value.", "objective_type": "catch_value_gte", "target_value": 500, "reward_type": "dogs", "reward_item_key": "fine_dog", "reward_amount": 2},
-    "variety_catcher": {"id": "variety_catcher", "title": "Variety Catcher", "description": "Catch 3 different types of dogs.", "objective_type": "catch_variety", "target_count": 3, "reward_type": "dogs", "reward_item_key": "loyal_dog", "reward_amount": 1},
-}
 
 @bot.event
 async def on_ready():
@@ -489,6 +580,8 @@ async def quest_reset_task():
     now = int(datetime.now(timezone.utc).timestamp())
     for g in bot.guilds:
         gd = load_guild_data(str(g.id), g.name)
+        if not gd.get("settings", {}).get("quests_enabled", True):
+            continue
         changed = False
         for uid, udata in gd.get("user_data", {}).items():
             # Only reset if enough time has passed
@@ -497,6 +590,7 @@ async def quest_reset_task():
                 udata["active_quests"] = {}
                 udata["completed_quests_this_cycle"] = []
                 udata["last_quest_reset_timestamp"] = now
+                assign_active_quests_if_needed(udata)
                 changed = True
         if changed:
             save_guild_data(str(g.id), gd, g.name)
@@ -567,6 +661,9 @@ async def quests_view_slash(interaction: discord.Interaction):
     uid = str(interaction.user.id)
     guild_data = load_guild_data(gid, interaction.guild.name)
     user_data = get_user_data_block(gid, uid, guild_data)
+    # Assign quests on-demand so users don't wait for the reset loop.
+    if assign_active_quests_if_needed(user_data):
+        save_guild_data(gid, guild_data, interaction.guild.name)
     active_quests = user_data.get("active_quests", {})
     completed_quests = set(user_data.get("completed_quests_this_cycle", []))
     embed = discord.Embed(title=f"📜 {interaction.user.display_name}'s Active Quests", color=discord.Color.dark_purple())
@@ -600,6 +697,11 @@ async def quests_view_slash(interaction: discord.Interaction):
     else:
         embed.set_footer(text=f"Quest reset period is active. New quests should appear soon!")
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# Backwards-compatible alias (README mentions `/quest`)
+@bot.tree.command(name="quest", description="View your current active quests.")
+async def quest_slash(interaction: discord.Interaction):
+    await quests_view_slash(interaction)
 
 # --- SLASH COMMANDS ---
 # (inventory, achievements, leaderboard, catalogue, setup, all crafting, shield, steal, givedog, forcespawn, chest, dogsino)
