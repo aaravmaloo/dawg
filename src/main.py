@@ -60,7 +60,7 @@ DOG_TYPES = {
         "value": 20,
         "spawn_weight": 1500.0,
         "emoji_name": "dog_good",
-        "emoji_id": "138585088318332567",
+        "emoji_id": "1385885101228822569",
     },
     "dog_better": {
         "display_name": "Better Dog",
@@ -68,7 +68,7 @@ DOG_TYPES = {
         "value": 30,
         "spawn_weight": 1000.0,
         "emoji_name": "dog_better",
-        "emoji_id": "138585100167671156",
+        "emoji_id": "1385885108216791156",
     },
     "uncommon_dog": {
         "display_name": "Uncommon Dog",
@@ -76,7 +76,7 @@ DOG_TYPES = {
         "value": 50,
         "spawn_weight": 700.0,
         "emoji_name": "uncommon_dog",
-        "emoji_id": "138585243314525103",
+        "emoji_id": "1385885238848258148",
     },
     "fine_dog": {
         "display_name": "Fine Dog",
@@ -92,7 +92,7 @@ DOG_TYPES = {
         "value": 100,
         "spawn_weight": 350.0,
         "emoji_name": "loyal_dog",
-        "emoji_id": "138585182510429447",
+        "emoji_id": "1385885184561516667",
     },
     "divine_dog": {
         "display_name": "Divine Dog",
@@ -100,7 +100,7 @@ DOG_TYPES = {
         "value": 150,
         "spawn_weight": 250.0,
         "emoji_name": "divine_dog",
-        "emoji_id": "138585112117838585",
+        "emoji_id": "1385885121193836585",
     },
     "dangerous_dog": {
         "display_name": "Dangerous Dog",
@@ -108,7 +108,7 @@ DOG_TYPES = {
         "value": 200,
         "spawn_weight": 180.0,
         "emoji_name": "dangerous_dog",
-        "emoji_id": "138585072151267047",
+        "emoji_id": "1385885092567847042",
     },
     "angel_dog": {
         "display_name": "Angel Dog",
@@ -116,7 +116,7 @@ DOG_TYPES = {
         "value": 250,
         "spawn_weight": 120.0,
         "emoji_name": "angel_dog",
-        "emoji_id": "138585059215907526",
+        "emoji_id": "1385885085815017526",
     },
     "golden_dog": {
         "display_name": "Golden Dog",
@@ -124,7 +124,7 @@ DOG_TYPES = {
         "value": 300,
         "spawn_weight": 90.0,
         "emoji_name": "gold_dog",
-        "emoji_id": "138585167080670763",
+        "emoji_id": "1385885167708803163",
     },
     "spirit_dog": {
         "display_name": "Spirit Dog",
@@ -132,7 +132,7 @@ DOG_TYPES = {
         "value": 350,
         "spawn_weight": 70.0,
         "emoji_name": "spirit_dog",
-        "emoji_id": "138585218272697146",
+        "emoji_id": "1385885217268699166",
     },
     "ancient_dog": {
         "display_name": "Ancient Dog",
@@ -140,7 +140,7 @@ DOG_TYPES = {
         "value": 400,
         "spawn_weight": 60.0,
         "emoji_name": "ancient_dog",
-        "emoji_id": "138585037708365560",
+        "emoji_id": "1385885077388656670",
     },
     "super_dog": {
         "display_name": "Super Dog",
@@ -148,7 +148,7 @@ DOG_TYPES = {
         "value": 500,
         "spawn_weight": 50.0,
         "emoji_name": "super_dog",
-        "emoji_id": "138585273727801360",
+        "emoji_id": "1385885276789801050",
     },
     "sonic_dog": {
         "display_name": "Sonic Dog",
@@ -156,7 +156,7 @@ DOG_TYPES = {
         "value": 600,
         "spawn_weight": 40.0,
         "emoji_name": "sonic_dog",
-        "emoji_id": "138585204811826623",
+        "emoji_id": "1385885204681326673",
     },
     "amazing_dog": {
         "display_name": "Amazing Dog",
@@ -164,7 +164,7 @@ DOG_TYPES = {
         "value": 750,
         "spawn_weight": 30.0,
         "emoji_name": "amazing_dog",
-        "emoji_id": "138585017074254328",
+        "emoji_id": "1385885070912524328",
     },
     "master_dog": {
         "display_name": "Master Dog",
@@ -172,7 +172,7 @@ DOG_TYPES = {
         "value": 1000,
         "spawn_weight": 20.0,
         "emoji_name": "master_dog",
-        "emoji_id": "138585193723121452",
+        "emoji_id": "1385885197337231453",
     },
     "trash_dog": {
         "display_name": "Trash Dog",
@@ -180,7 +180,7 @@ DOG_TYPES = {
         "value": 5,
         "spawn_weight": 15.0,
         "emoji_name": "trash_dog",
-        "emoji_id": "138585263162679541",
+        "emoji_id": "1385885263565291541",
     },
     "unidentified_dog": {
         "display_name": "Unidentified Dog",
@@ -188,7 +188,7 @@ DOG_TYPES = {
         "value": 1250,
         "spawn_weight": 8.0,
         "emoji_name": "unidentified_dog",
-        "emoji_id": "138585231254283166",
+        "emoji_id": "1385885227804528703",
     },
     "unbeatable_dog": {
         "display_name": "Unbeatable Dog",
@@ -196,7 +196,7 @@ DOG_TYPES = {
         "value": 1500,
         "spawn_weight": 4.0,
         "emoji_name": "unbeatable_dog",
-        "emoji_id": "138585254479513643",
+        "emoji_id": "1385885251447951360",
     },
     "alien_dog": {
         "display_name": "Alien Dog",
@@ -204,7 +204,7 @@ DOG_TYPES = {
         "value": 2000,
         "spawn_weight": 1.5,
         "emoji_name": "alien_dog",
-        "emoji_id": "138585005776421210",
+        "emoji_id": "1385885063916421210",
     },
     "void_dog": {
         "display_name": "Void Dog",
@@ -212,7 +212,7 @@ DOG_TYPES = {
         "value": 5000,
         "spawn_weight": 0.3,
         "emoji_name": "void_dog",
-        "emoji_id": "138585292776110074",
+        "emoji_id": "1385885293277610074",
     },
     "devil_dog": {
         "display_name": "Devil Dog",
@@ -220,7 +220,7 @@ DOG_TYPES = {
         "value": 6666,
         "spawn_weight": 0.08,
         "emoji_name": "devil_dog",
-        "emoji_id": "138585127746034654",
+        "emoji_id": "1385885127246086154",
     },
     "godly_dog": {
         "display_name": "Godly Dog",
@@ -228,7 +228,7 @@ DOG_TYPES = {
         "value": 8000,
         "spawn_weight": 0.02,
         "emoji_name": "godly_dog",
-        "emoji_id": "138585147440087917",
+        "emoji_id": "1385885147420819517",
     },
 }
 DOG_TYPE_KEYS = list(DOG_TYPES.keys())
